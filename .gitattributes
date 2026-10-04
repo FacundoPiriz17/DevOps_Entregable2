@@ -1,0 +1,5 @@
+# Los scripts shell deben conservar finales de linea Unix al clonarse.
+*.sh text eol=lf
+
+# Flyway calcula checksums sobre estos archivos; deben ser identicos en cada SO.
+backend/src/main/resources/db/migration/*.sql text eol=lf

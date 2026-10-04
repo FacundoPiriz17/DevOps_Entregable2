@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink-950: #050817;
+  --color-ink-900: #090e26;
+  --color-ink-850: #0d1330;
+  --color-ink-800: #121a3a;
+  --color-surface: #070b18;
+  --color-panel: #0d1429;
+  --color-panel-soft: #121b35;
+  --color-panel-hover: #182342;
+  --color-line: #253052;
+  --color-copy: #f4f7ff;
+  --color-copy-soft: #a9b2cc;
+  --color-copy-faint: #7883a4;
+  --color-brand-cyan: #00bdf8;
+  --color-brand-blue: #1977ff;
+  --color-brand-violet: #7d1bff;
+  --color-brand-violet-dark: #5a0bd4;
+  --color-success: #13a475;
+  --color-danger: #d7415d;
+  --shadow-card: 0 18px 50px rgba(0, 0, 0, 0.34);
+  --shadow-float: 0 24px 70px rgba(0, 0, 0, 0.48);
+  --animate-float-mark: float-mark 1.7s ease-in-out infinite;
+}
+
+@utility bg-brand {
+  background-image: linear-gradient(120deg, #00bdf8, #1977ff 48%, #7d1bff);
+}
+
+@utility text-brand {
+  background-image: linear-gradient(120deg, #00bdf8, #1977ff 48%, #7d1bff);
+  background-clip: text;
+  color: transparent;
+}
+
+@layer components {
+  .neon-frame {
+    isolation: isolate;
+    position: relative;
+  }
+
+  .neon-frame__border {
+    height: calc(100% + 8px);
+    inset: -4px;
+    opacity: 0;
+    overflow: visible;
+    pointer-events: none;
+    position: absolute;
+    transition: opacity 180ms ease;
+    width: calc(100% + 8px);
+    z-index: 20;
+  }
+
+  .neon-frame__border rect {
+    fill: none;
+    height: calc(100% - 6px);
+    rx: var(--neon-radius, 22px);
+    vector-effect: non-scaling-stroke;
+    width: calc(100% - 6px);
+    x: 3px;
+    y: 3px;
+  }
+
+  .neon-frame__ambient {
+    filter: drop-shadow(0 0 8px var(--neon-a)) drop-shadow(0 0 14px var(--neon-b));
+    opacity: .88;
+    stroke: color-mix(in srgb, var(--neon-a) 80%, var(--neon-b));
+    stroke-width: 2.3;
+  }
+
+  .neon-frame__glow,
+  .neon-frame__runner {
+    animation: neon-border-run var(--neon-duration, 4s) linear infinite;
+    animation-play-state: paused;
+    stroke-linecap: round;
+  }
+
+  .neon-frame__glow {
+    filter: blur(3px) drop-shadow(0 0 9px var(--neon-b));
+    opacity: .78;
+    stroke: var(--neon-a);
+    stroke-dasharray: 24 76;
+    stroke-width: 7;
+  }
+
+  .neon-frame__runner {
+    filter: drop-shadow(0 0 5px var(--neon-a)) drop-shadow(0 0 9px var(--neon-b));
+    stroke: var(--neon-a);
+    stroke-dasharray: 18 82;
+    stroke-width: 2.5;
+  }
+
+  .neon-frame__core {
+    animation: neon-border-head var(--neon-duration, 4s) linear infinite;
+    animation-play-state: paused;
+    stroke: #ffffff;
+    stroke-dasharray: 3 97;
+    stroke-linecap: round;
+    stroke-width: 1.8;
+  }
+
+  .neon-frame:hover > .neon-frame__border,
+  .neon-frame:focus-within > .neon-frame__border,
+  .group:hover .neon-frame--parent > .neon-frame__border,
+  .group:focus-within .neon-frame--parent > .neon-frame__border {
+    opacity: 1;
+  }
+
+  .neon-frame:hover > .neon-frame__border :is(.neon-frame__glow, .neon-frame__runner, .neon-frame__core),
+  .neon-frame:focus-within > .neon-frame__border :is(.neon-frame__glow, .neon-frame__runner, .neon-frame__core),
+  .group:hover .neon-frame--parent > .neon-frame__border :is(.neon-frame__glow, .neon-frame__runner, .neon-frame__core),
+  .group:focus-within .neon-frame--parent > .neon-frame__border :is(.neon-frame__glow, .neon-frame__runner, .neon-frame__core) {
+    animation-play-state: running;
+  }
+}
+
+@keyframes neon-border-run {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+@keyframes neon-border-head {
+  from {
+    stroke-dashoffset: -17;
+  }
+
+  to {
+    stroke-dashoffset: -117;
+  }
+}
+
+@keyframes float-mark {
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    color-scheme: dark;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background:
+      radial-gradient(circle at 8% 0%, rgba(0, 189, 248, 0.08), transparent 28rem),
+      radial-gradient(circle at 92% 18%, rgba(125, 27, 255, 0.09), transparent 34rem),
+      #070b18;
+    color: #f4f7ff;
+    font-family: Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button,
+  input,
+  select {
+    font: inherit;
+  }
+
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  ::selection {
+    background: rgba(25, 119, 255, 0.24);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neon-frame__glow,
+  .neon-frame__runner,
+  .neon-frame__core {
+    animation: none;
+  }
+}

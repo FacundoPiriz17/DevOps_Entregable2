@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playhub-config
+  labels:
+    app.kubernetes.io/name: playhub
+data:
+  DB_URL: "jdbc:postgresql://playhub-db:5432/devops_db"
+  DB_NAME: "devops_db"
+  DB_USER: "postgres"
+  ADMIN_EMAIL: "admin@playhub.com"
+  CORS_ALLOWED_ORIGINS: "http://localhost:5745"
+  COOKIE_SECURE: "false"
+  SPRING_FLYWAY_ENABLED: "false"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: "readinessState,db"

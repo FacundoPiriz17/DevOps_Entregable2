@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: playhub-frontend
+  labels:
+    app: playhub-frontend
+spec:
+  type: ClusterIP
+  selector:
+    app: playhub-frontend
+    slot: blue
+  ports:
+    - name: http
+      port: 5745
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: playhub-frontend-blue
+  labels:
+    app: playhub-frontend
+    slot: blue
+spec:
+  type: ClusterIP
+  selector:
+    app: playhub-frontend
+    slot: blue
+  ports:
+    - name: http
+      port: 5745
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: playhub-frontend-green
+  labels:
+    app: playhub-frontend
+    slot: green
+spec:
+  type: ClusterIP
+  selector:
+    app: playhub-frontend
+    slot: green
+  ports:
+    - name: http
+      port: 5745
+      targetPort: http

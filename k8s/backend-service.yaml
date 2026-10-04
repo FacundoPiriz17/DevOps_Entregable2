@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: playhub-backend
+  labels:
+    app: playhub-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: playhub-backend
+    slot: blue
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: playhub-backend-blue
+  labels:
+    app: playhub-backend
+    slot: blue
+spec:
+  type: ClusterIP
+  selector:
+    app: playhub-backend
+    slot: blue
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: playhub-backend-green
+  labels:
+    app: playhub-backend
+    slot: green
+spec:
+  type: ClusterIP
+  selector:
+    app: playhub-backend
+    slot: green
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

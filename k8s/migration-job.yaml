@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: playhub-migrations
+  labels:
+    app: playhub-migrations
+spec:
+  # Flyway ya reintenta la conexion; un solo reintento de Pod evita cinco fallos
+  # identicos cuando la validacion de una migracion es deterministica.
+  backoffLimit: 1
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        app: playhub-migrations
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: flyway
+          image: redgate/flyway:13.4
+          imagePullPolicy: IfNotPresent
+          args:
+            - migrate
+          env:
+            - name: FLYWAY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: playhub-config
+                  key: DB_URL
+            - name: FLYWAY_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: playhub-config
+                  key: DB_USER
+            - name: FLYWAY_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: playhub-secrets
+                  key: DB_PASSWORD
+            - name: FLYWAY_LOCATIONS
+              value: "filesystem:/flyway/sql"
+            - name: FLYWAY_CONNECT_RETRIES
+              value: "60"
+            - name: FLYWAY_VALIDATE_MIGRATION_NAMING
+              value: "true"
+          volumeMounts:
+            - name: migration-sql
+              mountPath: /flyway/sql
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: migration-sql
+          configMap:
+            name: playhub-migration-sql
