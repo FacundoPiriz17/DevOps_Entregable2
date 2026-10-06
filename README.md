@@ -19,6 +19,8 @@ La aplicación está compuesta por:
 
 El proyecto incluye scripts para automatizar el despliegue, cambio de slot y limpieza del entorno Kubernetes tanto en **Windows PowerShell** como en **Linux/macOS**.
 
+Incluye los servicios base de **Grafana** y **Prometheus** para Docker Compose y Kubernetes. Ver [instrucciones de uso](monitoring/README.md).
+
 ---
 
 ## Arquitectura

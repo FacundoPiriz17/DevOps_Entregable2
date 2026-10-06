@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playhub-prometheus-config
+  labels:
+    app: playhub-prometheus
+data:
+  prometheus.yml: |
+    scrape_configs: []
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: playhub-prometheus-data
+  labels:
+    app: playhub-prometheus
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: playhub-prometheus
+  labels:
+    app: playhub-prometheus
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: playhub-prometheus
+  template:
+    metadata:
+      labels:
+        app: playhub-prometheus
+    spec:
+      securityContext:
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v3.15.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+              readOnly: true
+            - name: data
+              mountPath: /prometheus
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: playhub-prometheus-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: playhub-prometheus-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: playhub-prometheus
+  labels:
+    app: playhub-prometheus
+spec:
+  type: ClusterIP
+  selector:
+    app: playhub-prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
