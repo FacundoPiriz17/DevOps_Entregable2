@@ -6,7 +6,135 @@ metadata:
     app: playhub-prometheus
 data:
   prometheus.yml: |
-    scrape_configs: []
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: [localhost:9090]
+
+      - job_name: node-exporter
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              own_namespace: true
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: playhub-node-exporter
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: metrics
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_phase]
+            regex: Running
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: instance
+
+      - job_name: kube-state-metrics
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              own_namespace: true
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: playhub-kube-state-metrics
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: metrics
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_phase]
+            regex: Running
+            action: keep
+
+      # El kubelet con cri-dockerd puede omitir totalmente la red de los pods.
+      - job_name: cadvisor-network
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              own_namespace: true
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: playhub-cadvisor-network
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: metrics
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_phase]
+            regex: Running
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: instance
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: container_network_(receive|transmit)_bytes_total
+            action: keep
+          - source_labels: [container_label_io_kubernetes_pod_namespace]
+            regex: (.+)
+            target_label: namespace
+          - source_labels: [container_label_io_kubernetes_pod_name]
+            regex: (.+)
+            target_label: pod
+          - source_labels: [container_label_io_kubernetes_container_name]
+            regex: (.+)
+            target_label: container
+          - regex: container_label_.*
+            action: labeldrop
+
+      # El API server valida TLS y autentica el acceso a cada kubelet.
+      - job_name: kubelet-cadvisor
+        scheme: https
+        authorization:
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
+
+      # Incluye volumenes persistentes cuando el driver publica estas metricas.
+      - job_name: kubelet
+        scheme: https
+        authorization:
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
+
+      # CPU/RAM con etiquetas Kubernetes incluso en Minikube con cri-dockerd.
+      - job_name: kubelet-resource
+        scheme: https
+        authorization:
+          credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        kubernetes_sd_configs:
+          - role: node
+        relabel_configs:
+          - target_label: __address__
+            replacement: kubernetes.default.svc:443
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: __metrics_path__
+            replacement: /api/v1/nodes/${1}/proxy/metrics/resource
+          - source_labels: [__meta_kubernetes_node_name]
+            target_label: instance
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -39,6 +167,7 @@ spec:
       labels:
         app: playhub-prometheus
     spec:
+      serviceAccountName: playhub-prometheus
       securityContext:
         runAsUser: 65534
         runAsGroup: 65534

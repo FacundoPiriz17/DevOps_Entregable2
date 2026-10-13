@@ -15,7 +15,7 @@ usage() {
     "Por defecto conserva el PVC y las imagenes locales." \
     "" \
     "Opciones:" \
-    "  --delete-data              Elimina el PVC y todos los datos de PostgreSQL." \
+    "  --delete-data              Elimina los PVC y datos de PostgreSQL, Prometheus y Grafana." \
     "  --remove-images            Elimina las imagenes PlayHub de Minikube y Docker." \
     "  --minikube-profile NOMBRE  Perfil de Minikube (default: minikube)." \
     "  --dry-run                  Muestra las eliminaciones sin ejecutarlas." \
@@ -146,21 +146,28 @@ echo "Namespace: $namespace"
 echo "Solo se eliminaran recursos con nombres propios de PlayHub."
 
 if [[ "$delete_data" == true ]]; then
-  echo "Aviso: --delete-data eliminara playhub-postgres-data y todos sus datos." >&2
+  echo "Aviso: --delete-data eliminara los PVC y datos de PostgreSQL, Prometheus y Grafana." >&2
 else
-  echo "El PVC playhub-postgres-data se conservara. Usa --delete-data para reiniciar tambien la base."
+  echo "Los PVC de PostgreSQL, Prometheus y Grafana se conservaran. Usa --delete-data para eliminarlos."
 fi
 
-echo "Deteniendo port-forward de backend y frontend, si existen..."
+echo "Deteniendo port-forward de backend, frontend, Prometheus y Grafana, si existen..."
 stop_tracked_port_forward backend
 stop_tracked_port_forward frontend
+stop_tracked_port_forward prometheus
+stop_tracked_port_forward grafana
 
 delete_resources deployment \
   playhub-backend-blue \
   playhub-backend-green \
   playhub-frontend-blue \
   playhub-frontend-green \
-  playhub-postgres
+  playhub-postgres \
+  playhub-prometheus \
+  playhub-grafana \
+  playhub-kube-state-metrics
+
+delete_resources daemonset playhub-node-exporter playhub-cadvisor-network
 
 delete_resources job playhub-migrations
 
@@ -171,11 +178,23 @@ delete_resources service \
   playhub-frontend \
   playhub-frontend-blue \
   playhub-frontend-green \
-  playhub-db
+  playhub-db \
+  playhub-prometheus \
+  playhub-grafana
 
 delete_resources configmap \
   playhub-config \
-  playhub-migration-sql
+  playhub-migration-sql \
+  playhub-prometheus-config \
+  playhub-grafana-datasources \
+  playhub-grafana-dashboard-provider \
+  playhub-grafana-resource-dashboards
+
+delete_resources rolebinding playhub-prometheus-discovery playhub-kube-state-metrics
+delete_resources role playhub-prometheus-discovery playhub-kube-state-metrics
+delete_resources serviceaccount playhub-prometheus playhub-kube-state-metrics
+delete_resources clusterrolebinding playhub-prometheus-nodes
+delete_resources clusterrole playhub-prometheus-nodes
 
 delete_resources secret playhub-secrets
 
@@ -204,7 +223,7 @@ else
 fi
 
 if [[ "$delete_data" == true ]]; then
-  delete_resources pvc playhub-postgres-data
+  delete_resources pvc playhub-postgres-data playhub-prometheus-data playhub-grafana-data
 fi
 
 if [[ "$remove_images" == true ]]; then
@@ -239,5 +258,5 @@ else
 fi
 
 if [[ "$delete_data" == false ]]; then
-  echo "Se conservo persistentvolumeclaim/playhub-postgres-data."
+  echo "Se conservaron los PVC de PostgreSQL, Prometheus y Grafana."
 fi

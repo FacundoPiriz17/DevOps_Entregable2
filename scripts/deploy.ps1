@@ -490,6 +490,16 @@ Assert-Command -Name "kubectl"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $migrationDirectory = Join-Path $projectRoot "backend/src/main/resources/db/migration"
 
+$secretManifest = Join-Path $projectRoot "k8s/secret.yaml"
+$secretExample = Join-Path $projectRoot "k8s/secret.yaml.example"
+if (-not (Test-Path -LiteralPath $secretManifest)) {
+    if (-not (Test-Path -LiteralPath $secretExample -PathType Leaf)) {
+        throw "Faltan k8s/secret.yaml y k8s/secret.yaml.example."
+    }
+    Copy-Item -LiteralPath $secretExample -Destination $secretManifest
+    Write-Host "Se creo k8s/secret.yaml a partir de k8s/secret.yaml.example."
+}
+
 if (-not (Test-Path -LiteralPath $migrationDirectory -PathType Container)) {
     throw "No se encontro el directorio de migraciones: $migrationDirectory"
 }
@@ -559,7 +569,8 @@ $manifestFiles = @(
     "k8s/backend-service.yaml",
     "k8s/frontend-service.yaml",
     "k8s/backend-blue-deployment.yaml",
-    "k8s/frontend-blue-deployment.yaml"
+    "k8s/frontend-blue-deployment.yaml",
+    "k8s/monitoring/"
 )
 
 if ($DeployGreen) {
@@ -762,6 +773,43 @@ try {
     }
 
     Write-Host ""
+    Write-Host "Desplegando Prometheus, Grafana y exporters..."
+    $prometheusExisted = Test-KubectlResourceExists -Kind "deployment" -Name "playhub-prometheus"
+    $grafanaExisted = Test-KubectlResourceExists -Kind "deployment" -Name "playhub-grafana"
+    Invoke-Kubectl -Arguments @("apply", "-n", $currentNamespace, "-f", "k8s/monitoring/")
+
+    # El binding del manifiesto usa default; ajustarlo al namespace del despliegue.
+    $monitoringBinding = & kubectl create clusterrolebinding playhub-prometheus-nodes `
+        --clusterrole=playhub-prometheus-nodes `
+        "--serviceaccount=${currentNamespace}:playhub-prometheus" `
+        --dry-run=client -o json
+    if ($LASTEXITCODE -ne 0) {
+        throw "No se pudo generar el binding de Prometheus."
+    }
+    $monitoringBinding | & kubectl apply -f -
+    if ($LASTEXITCODE -ne 0) {
+        throw "No se pudo aplicar el binding de Prometheus."
+    }
+
+    if ($prometheusExisted) {
+        Invoke-Kubectl -Arguments @("rollout", "restart", "deployment/playhub-prometheus")
+    }
+    if ($grafanaExisted) {
+        Invoke-Kubectl -Arguments @("rollout", "restart", "deployment/playhub-grafana")
+    }
+    try {
+        foreach ($daemonset in @("playhub-node-exporter", "playhub-cadvisor-network")) {
+            Invoke-Kubectl -Arguments @("rollout", "status", "daemonset/$daemonset", "--timeout=300s")
+        }
+        foreach ($deployment in @("playhub-kube-state-metrics", "playhub-prometheus", "playhub-grafana")) {
+            Invoke-Kubectl -Arguments @("rollout", "status", "deployment/$deployment", "--timeout=300s")
+        }
+    }
+    catch {
+        Show-DeploymentDiagnostics
+        throw
+    }
+    Write-Host ""
     Write-Host "Despliegue terminado. Slot activo: Blue"
 
     Invoke-Kubectl -Arguments @("get", "pods")
@@ -771,22 +819,26 @@ try {
 
     if (-not $NoPortForward) {
         Write-Host ""
-        Write-Host "Iniciando port-forward de backend y frontend..."
+        Write-Host "Iniciando port-forward de backend, frontend, Prometheus y Grafana..."
 
         $backendOk = Start-TrackedPortForward -Name "backend" -Service "playhub-backend" -LocalPort 8080 -RemotePort 8080 -ProjectRoot $projectRoot
         $frontendOk = Start-TrackedPortForward -Name "frontend" -Service "playhub-frontend" -LocalPort 5745 -RemotePort 5745 -ProjectRoot $projectRoot
+        $prometheusOk = Start-TrackedPortForward -Name "prometheus" -Service "playhub-prometheus" -LocalPort 9090 -RemotePort 9090 -ProjectRoot $projectRoot
+        $grafanaOk = Start-TrackedPortForward -Name "grafana" -Service "playhub-grafana" -LocalPort 3000 -RemotePort 3000 -ProjectRoot $projectRoot
 
         Write-Host ""
 
-        if (-not ($backendOk -and $frontendOk)) {
+        if (-not ($backendOk -and $frontendOk -and $prometheusOk -and $grafanaOk)) {
             Write-Warning "El despliegue termino, pero algun port-forward no pudo iniciarse (ver mensajes arriba)."
-            Write-Warning "La app NO es accesible desde el navegador hasta que se resuelva."
+            Write-Warning "Alguno de los servicios no es accesible desde el navegador hasta que se resuelva."
             exit 1
         }
 
         Write-Host "Frontend disponible en: http://localhost:5745"
         Write-Host "Backend disponible en:  http://localhost:8080"
-        Write-Host "Para detenerlos: Stop-Process -Id (Get-Content logs\port-forward-backend.pid), (Get-Content logs\port-forward-frontend.pid)"
+        Write-Host "Prometheus disponible en: http://localhost:9090"
+        Write-Host "Grafana disponible en:    http://localhost:3000"
+        Write-Host "Para detenerlos: Stop-Process -Id (Get-Content logs\port-forward-backend.pid), (Get-Content logs\port-forward-frontend.pid), (Get-Content logs\port-forward-prometheus.pid), (Get-Content logs\port-forward-grafana.pid)"
     }
     else {
         Write-Warning "Se omitio el inicio automatico de port-forward (-NoPortForward)."

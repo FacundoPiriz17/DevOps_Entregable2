@@ -19,7 +19,7 @@ La aplicación está compuesta por:
 
 El proyecto incluye scripts para automatizar el despliegue, cambio de slot y limpieza del entorno Kubernetes tanto en **Windows PowerShell** como en **Linux/macOS**.
 
-Incluye los servicios base de **Grafana** y **Prometheus** para Docker Compose y Kubernetes. Ver [instrucciones de uso](monitoring/README.md).
+Incluye **Prometheus** y **Grafana**, con recolección de recursos y dashboards automáticos para Kubernetes: CPU, RAM, disco, red y throughput de I/O, tanto de nodos como de workloads Blue/Green. Docker Compose conserva los servicios base. Ver [instrucciones de uso](monitoring/README.md).
 
 ---
 
@@ -224,6 +224,8 @@ kubectl cluster-info
 
 Los scripts de despliegue realizan automáticamente:
 
+Antes de validar los manifiestos, crean `k8s/secret.yaml` desde `k8s/secret.yaml.example` si falta. Conservan el archivo local si ya existe. Kubernetes utiliza el ConfigMap y el Secret; `.env` se usa para Docker Compose.
+
 1. Validación de los manifiestos Kubernetes.
 2. Construcción de las imágenes Docker.
 3. Carga de las imágenes en el runtime del cluster.
@@ -234,8 +236,9 @@ Los scripts de despliegue realizan automáticamente:
 8. Creación de los Services.
 9. Despliegue del slot Blue.
 10. Opcionalmente, despliegue del slot Green.
-11. Verificación del estado de los Deployments.
-12. Inicio automático de los `port-forward` del frontend y backend.
+11. Despliegue de Prometheus, Grafana y los exporters de recursos.
+12. Verificación del estado de los Deployments y DaemonSets.
+13. Inicio automático de los `port-forward` del frontend, backend, Prometheus y Grafana.
 
 ---
 
@@ -350,6 +353,8 @@ Por defecto, los scripts `deploy.sh` y `deploy.ps1` crean automáticamente:
 ```text
 playhub-backend  -> localhost:8080
 playhub-frontend -> localhost:5745
+playhub-prometheus -> localhost:9090
+playhub-grafana    -> localhost:3000
 ```
 
 Por lo tanto, después de ejecutar `deploy` normalmente **no es necesario ejecutar manualmente `kubectl port-forward`**.
@@ -362,6 +367,12 @@ logs/port-forward-backend.log
 
 logs/port-forward-frontend.pid
 logs/port-forward-frontend.log
+
+logs/port-forward-prometheus.pid
+logs/port-forward-prometheus.log
+
+logs/port-forward-grafana.pid
+logs/port-forward-grafana.log
 ```
 
 ---
@@ -698,7 +709,7 @@ Por defecto, el PVC de PostgreSQL se conserva para no perder los datos.
 .\scripts\cleanup.ps1
 ```
 
-### Eliminar también los datos de PostgreSQL
+### Eliminar también los datos de PostgreSQL, Prometheus y Grafana
 
 ```powershell
 .\scripts\cleanup.ps1 -DeleteData
@@ -720,7 +731,7 @@ Por defecto, el PVC de PostgreSQL se conserva para no perder los datos.
 ./scripts/cleanup.sh
 ```
 
-### Eliminar también PostgreSQL
+### Eliminar también los datos de PostgreSQL, Prometheus y Grafana
 
 ```bash
 ./scripts/cleanup.sh --delete-data
@@ -738,7 +749,7 @@ Por defecto, el PVC de PostgreSQL se conserva para no perder los datos.
 ./scripts/cleanup.sh --dry-run
 ```
 
-> **Advertencia:** `-DeleteData` / `--delete-data` elimina el PersistentVolumeClaim `playhub-postgres-data` y, por lo tanto, los datos almacenados en PostgreSQL.
+> **Advertencia:** `-DeleteData` / `--delete-data` elimina los PVC de PostgreSQL, Prometheus y Grafana junto con sus datos. Sin esa opción, la limpieza conserva los tres volúmenes.
 
 ---
 
@@ -775,7 +786,7 @@ kubectl config current-context
 ./scripts/deploy.sh --cluster-type minikube --deploy-green
 ```
 
-Los port-forward del backend y frontend se crearán automáticamente.
+Los port-forward del backend, frontend, Prometheus y Grafana se crearán automáticamente.
 
 ---
 
@@ -1040,12 +1051,16 @@ frontend/src/
 | Frontend | `5745` |
 | Backend | `8080` |
 | PostgreSQL | `5432` |
+| Prometheus | `9090` |
+| Grafana | `3000` |
 
 Con los port-forward automáticos:
 
 ```text
 http://localhost:5745
 http://localhost:8080
+http://localhost:9090
+http://localhost:3000
 ```
 
 ---
