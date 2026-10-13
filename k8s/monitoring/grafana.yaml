@@ -43,6 +43,15 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/grafana
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /api/health
@@ -58,6 +67,15 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: playhub-grafana-data
+        - name: provisioning
+          configMap:
+            name: playhub-grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: playhub-grafana-dashboard-provider
+        - name: dashboards
+          configMap:
+            name: playhub-grafana-resource-dashboards
 ---
 apiVersion: v1
 kind: Service

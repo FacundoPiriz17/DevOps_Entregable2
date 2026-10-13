@@ -10,8 +10,11 @@ Esta carpeta contiene los scripts para desplegar PlayHub en un cluster de Kubern
 - Tener `kubectl` instalado y disponible en el `PATH`.
 - Tener el `kubectl context` apuntando al cluster correcto (verificar con `kubectl config current-context`).
 - Ejecutar los scripts desde cualquier ubicación dentro del repo: ambos scripts resuelven automáticamente la raíz del proyecto en base a su propia ubicación.
-- Los manifiestos de Kubernetes deben existir en la carpeta `k8s/` en la raíz del proyecto (`configmap.yaml`, `secret.yaml`, `postgres-*.yaml`, `migration-job.yaml`, `backend-*-deployment.yaml`, `frontend-*-deployment.yaml`, `backend-service.yaml`, `frontend-service.yaml`).
+- Los manifiestos de Kubernetes deben existir en `k8s/` y `k8s/monitoring/`. Las credenciales se toman de `secret.yaml` o se inicializan desde `secret.yaml.example`.
 - Las migraciones SQL deben existir en `backend/src/main/resources/db/migration`.
+- Si falta `k8s/secret.yaml`, el despliegue lo crea automáticamente copiando `k8s/secret.yaml.example`. Si ya existe, conserva su contenido. El ejemplo contiene los mismos valores del entorno de desarrollo.
+- Kubernetes no requiere `.env`: utiliza `k8s/configmap.yaml` y `k8s/secret.yaml`. `.env` es necesario para Docker Compose; se puede preparar a partir de `.env.example` completando sus valores.
+- El clúster debe disponer de una StorageClass predeterminada para PostgreSQL, Prometheus y Grafana, y permitir los exporters que acceden al nodo Linux.
 
 ## `deploy.sh` / `deploy.ps1`
 
@@ -25,8 +28,11 @@ Despliega la base (ConfigMap, Secret, PostgreSQL), corre las migraciones de Flyw
 4. Elimina el Job `playhub-migrations` si existía, aplica `migration-job.yaml`, espera a que el Job complete y muestra sus logs.
 5. Aplica `backend-service.yaml`, `frontend-service.yaml`, `backend-blue-deployment.yaml` y `frontend-blue-deployment.yaml`, y espera a que ambos rollouts del slot Blue completen.
 6. Si se pide, también despliega el slot Green (`backend-green-deployment.yaml`, `frontend-green-deployment.yaml`).
-7. Muestra un resumen: pods, jobs, PVCs y services.
-8. Inicia automáticamente `kubectl port-forward` para `playhub-backend` (`localhost:8080`) y `playhub-frontend` (`localhost:5745`), ya que ambos Services son `ClusterIP` y no son accesibles desde el host de otra forma. Los procesos quedan corriendo en segundo plano, con su PID y su log bajo `logs/port-forward-<backend|frontend>.{pid,log}`. Volver a ejecutar `deploy.sh`/`deploy.ps1` reemplaza los port-forward anteriores en vez de acumularlos. Usar `--no-port-forward` / `-NoPortForward` para omitir este paso.
+7. Despliega `k8s/monitoring/`: Prometheus, Grafana, kube-state-metrics, Node Exporter y cAdvisor para la red de pods. Ajusta el binding de Prometheus al namespace actual y espera los rollouts. En despliegues repetidos reinicia Prometheus y Grafana para cargar sus configuraciones actualizadas.
+8. Muestra un resumen: pods, jobs, PVCs y services.
+9. Inicia automáticamente `kubectl port-forward` para backend (`localhost:8080`), frontend (`localhost:5745`), Prometheus (`localhost:9090`) y Grafana (`localhost:3000`). Los procesos quedan en segundo plano, con PID y log bajo `logs/port-forward-<backend|frontend|prometheus|grafana>.{pid,log}`. Volver a ejecutar el despliegue reemplaza los accesos anteriores. `--no-port-forward` / `-NoPortForward` omite los cuatro accesos, pero despliega el monitoreo igualmente.
+
+Grafana aprovisiona la fuente Prometheus y los dashboards de nodos y workloads en la carpeta **PlayHub**. El usuario inicial es `admin` y la contraseña inicial es `admin`; se conservan en el PVC después de cambiarlos.
 
 ### Uso — Linux/macOS (Bash)
 
@@ -69,6 +75,8 @@ minikube start
 
 Alterna el tráfico de los Services `playhub-backend` y `playhub-frontend` entre los slots `blue` y `green`, cambiando el selector `slot` de cada Service.
 
+Los accesos a Prometheus y Grafana siguen activos al cambiar de slot; el monitoreo descubre los pods de ambos slots.
+
 ### Qué hace, en orden
 
 1. Verifica que `kubectl` esté disponible.
@@ -104,6 +112,20 @@ Alterna el tráfico de los Services `playhub-backend` y `playhub-frontend` entre
 ### Después de cambiar de slot
 
 Si los port-forward fueron iniciados por `deploy.sh`/`deploy.ps1` (existen `logs/port-forward-backend.pid` y `logs/port-forward-frontend.pid`), `switch-slot` los reinicia automáticamente para que apunten al nuevo slot. Si en cambio estás usando un `kubectl port-forward` manual (por fuera de esos scripts), debés detenerlo y reiniciarlo vos mismo luego de un `switch-slot`.
+
+## `cleanup.sh` / `cleanup.ps1`
+
+Retira la aplicación, el monitoreo, los exporters y sus permisos RBAC, y detiene los cuatro port-forward que registró el despliegue. Conserva por defecto los PVC de PostgreSQL, Prometheus y Grafana. `--delete-data` / `-DeleteData` elimina los tres PVC y sus datos. La limpieza conserva los archivos locales `secret.yaml` y `secret.yaml.example`.
+
+```bash
+./scripts/cleanup.sh --dry-run
+./scripts/cleanup.sh
+```
+
+```powershell
+.\scripts\cleanup.ps1 -WhatIf
+.\scripts\cleanup.ps1
+```
 
 ## Flujo típico de despliegue Blue/Green
 

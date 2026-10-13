@@ -1,0 +1,1492 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playhub-grafana-datasources
+  labels:
+    app: playhub-grafana
+data:
+  prometheus.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: playhub-prometheus
+        type: prometheus
+        access: proxy
+        url: http://playhub-prometheus:9090
+        isDefault: true
+        editable: false
+        jsonData:
+          timeInterval: 15s
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playhub-grafana-dashboard-provider
+  labels:
+    app: playhub-grafana
+data:
+  resources.yaml: |
+    apiVersion: 1
+    providers:
+      - name: playhub-resources
+        orgId: 1
+        folder: PlayHub
+        type: file
+        disableDeletion: false
+        allowUiUpdates: false
+        updateIntervalSeconds: 30
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playhub-grafana-resource-dashboards
+  labels:
+    app: playhub-grafana
+data:
+  playhub-nodes.json: |
+    {
+      "id": null,
+      "uid": "playhub-nodes",
+      "title": "PlayHub - Recursos de nodos",
+      "schemaVersion": 39,
+      "version": 1,
+      "tags": [
+        "playhub",
+        "kubernetes",
+        "recursos"
+      ],
+      "timezone": "browser",
+      "editable": false,
+      "refresh": "15s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "node",
+            "label": "Nodo",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "playhub-prometheus"
+            },
+            "definition": "label_values(node_uname_info{job=\"node-exporter\"}, instance)",
+            "query": {
+              "query": "label_values(node_uname_info{job=\"node-exporter\"}, instance)",
+              "refId": "node"
+            },
+            "refresh": 1,
+            "sort": 1,
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "current": {
+              "text": "All",
+              "value": "$__all"
+            }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "CPU utilizada (%)",
+          "description": "Porcentaje de tiempo no idle, promediado entre todos los cores del nodo.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{job=\"node-exporter\",instance=~\"$node\",mode=\"idle\"}[$__rate_interval])))",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "RAM utilizada (%)",
+          "description": "MemTotal menos MemAvailable: tiene en cuenta la memoria recuperable de caché.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * (1 - node_memory_MemAvailable_bytes{job=\"node-exporter\",instance=~\"$node\"} / node_memory_MemTotal_bytes{job=\"node-exporter\",instance=~\"$node\"})",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Disco ocupado por filesystem (%)",
+          "description": "Espacio no disponible para un usuario normal, incluyendo bloques reservados. Incluye rootfs overlay de Minikube; excluye filesystems en memoria.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * (1 - node_filesystem_avail_bytes{job=\"node-exporter\",instance=~\"$node\",fstype!~\"tmpfs|devtmpfs|squashfs|nsfs|proc|sysfs|cgroup2?\",mountpoint!~\"/run($|/.*)\"} / (node_filesystem_size_bytes{job=\"node-exporter\",instance=~\"$node\",fstype!~\"tmpfs|devtmpfs|squashfs|nsfs|proc|sysfs|cgroup2?\",mountpoint!~\"/run($|/.*)\"} > 0))",
+              "legendFormat": "{{instance}} {{mountpoint}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Disco disponible",
+          "description": "Bytes disponibles por filesystem del nodo; no representa el tamaño solicitado de un PVC.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "node_filesystem_avail_bytes{job=\"node-exporter\",instance=~\"$node\",fstype!~\"tmpfs|devtmpfs|squashfs|nsfs|proc|sysfs|cgroup2?\",mountpoint!~\"/run($|/.*)\"}",
+              "legendFormat": "{{instance}} {{mountpoint}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Red recibida / enviada",
+          "description": "Throughput por interfaz en bytes/s. Excluye loopback y bridges/interfaces virtuales comunes para evitar doble conteo.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "rate(node_network_receive_bytes_total{job=\"node-exporter\",instance=~\"$node\",device!~\"lo|veth.*|docker.*|br-.*|cni.*|flannel.*|cali.*\"}[$__rate_interval])",
+              "legendFormat": "{{instance}} {{device}} RX",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            },
+            {
+              "refId": "B",
+              "expr": "rate(node_network_transmit_bytes_total{job=\"node-exporter\",instance=~\"$node\",device!~\"lo|veth.*|docker.*|br-.*|cni.*|flannel.*|cali.*\"}[$__rate_interval])",
+              "legendFormat": "{{instance}} {{device}} TX",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "Uso del enlace de red (%)",
+          "description": "RX y TX se comparan separadamente con la velocidad nominal del enlace. Sin velocidad válida, queda sin datos; común en Minikube.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * rate(node_network_receive_bytes_total{job=\"node-exporter\",instance=~\"$node\",device!~\"lo|veth.*|docker.*|br-.*|cni.*|flannel.*|cali.*\"}[$__rate_interval]) / on(instance, device) (node_network_speed_bytes{job=\"node-exporter\",instance=~\"$node\",device!~\"lo|veth.*|docker.*|br-.*|cni.*|flannel.*|cali.*\"} > 0)",
+              "legendFormat": "{{instance}} {{device}} RX",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            },
+            {
+              "refId": "B",
+              "expr": "100 * rate(node_network_transmit_bytes_total{job=\"node-exporter\",instance=~\"$node\",device!~\"lo|veth.*|docker.*|br-.*|cni.*|flannel.*|cali.*\"}[$__rate_interval]) / on(instance, device) (node_network_speed_bytes{job=\"node-exporter\",instance=~\"$node\",device!~\"lo|veth.*|docker.*|br-.*|cni.*|flannel.*|cali.*\"} > 0)",
+              "legendFormat": "{{instance}} {{device}} TX",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Throughput de disco: lectura / escritura",
+          "description": "Bytes/s de I/O por dispositivo de bloque. No sumar particiones, discos y dispositivos virtuales como si fueran independientes.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 24,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "rate(node_disk_read_bytes_total{job=\"node-exporter\",instance=~\"$node\",device!~\"loop.*|ram.*|fd.*\"}[$__rate_interval])",
+              "legendFormat": "{{instance}} {{device}} lectura",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            },
+            {
+              "refId": "B",
+              "expr": "rate(node_disk_written_bytes_total{job=\"node-exporter\",instance=~\"$node\",device!~\"loop.*|ram.*|fd.*\"}[$__rate_interval])",
+              "legendFormat": "{{instance}} {{device}} escritura",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Operaciones de disco (IOPS)",
+          "description": "Operaciones completadas por segundo por dispositivo.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 24,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "iops",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "rate(node_disk_reads_completed_total{job=\"node-exporter\",instance=~\"$node\",device!~\"loop.*|ram.*|fd.*\"}[$__rate_interval])",
+              "legendFormat": "{{instance}} {{device}} lectura",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            },
+            {
+              "refId": "B",
+              "expr": "rate(node_disk_writes_completed_total{job=\"node-exporter\",instance=~\"$node\",device!~\"loop.*|ram.*|fd.*\"}[$__rate_interval])",
+              "legendFormat": "{{instance}} {{device}} escritura",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "type": "timeseries",
+          "title": "Tiempo de disco con I/O (%)",
+          "description": "Fracción del tiempo con operaciones pendientes. En discos paralelos/NVMe no equivale a porcentaje de capacidad máxima.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 32,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * rate(node_disk_io_time_seconds_total{job=\"node-exporter\",instance=~\"$node\",device!~\"loop.*|ram.*|fd.*\"}[$__rate_interval])",
+              "legendFormat": "{{instance}} {{device}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "type": "timeseries",
+          "title": "Carga de CPU por core",
+          "description": "Load average de 1 minuto dividido entre cores. Incluye tareas ejecutables y espera no interrumpible; puede superar 1.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 32,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "node_load1{job=\"node-exporter\",instance=~\"$node\"} / on(instance) count by (instance) (node_cpu_seconds_total{job=\"node-exporter\",instance=~\"$node\",mode=\"idle\"})",
+              "legendFormat": "{{instance}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  playhub-workloads.json: |
+    {
+      "id": null,
+      "uid": "playhub-workloads",
+      "title": "PlayHub - Recursos de workloads",
+      "schemaVersion": 39,
+      "version": 1,
+      "tags": [
+        "playhub",
+        "kubernetes",
+        "recursos"
+      ],
+      "timezone": "browser",
+      "editable": false,
+      "refresh": "15s",
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "templating": {
+        "list": [
+          {
+            "name": "namespace",
+            "label": "Namespace",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "playhub-prometheus"
+            },
+            "definition": "label_values(kube_pod_info{job=\"kube-state-metrics\",pod=~\"playhub-(backend|frontend|postgres).*\"}, namespace)",
+            "query": {
+              "query": "label_values(kube_pod_info{job=\"kube-state-metrics\",pod=~\"playhub-(backend|frontend|postgres).*\"}, namespace)",
+              "refId": "namespace"
+            },
+            "refresh": 1,
+            "sort": 1,
+            "multi": true,
+            "includeAll": true,
+            "allValue": ".*",
+            "current": {
+              "text": "All",
+              "value": "$__all"
+            }
+          },
+          {
+            "name": "pod",
+            "label": "Pod / slot",
+            "type": "query",
+            "datasource": {
+              "type": "prometheus",
+              "uid": "playhub-prometheus"
+            },
+            "definition": "label_values(kube_pod_info{job=\"kube-state-metrics\",namespace=~\"$namespace\",pod=~\"playhub-(backend|frontend|postgres).*\"}, pod)",
+            "query": {
+              "query": "label_values(kube_pod_info{job=\"kube-state-metrics\",namespace=~\"$namespace\",pod=~\"playhub-(backend|frontend|postgres).*\"}, pod)",
+              "refId": "pod"
+            },
+            "refresh": 1,
+            "sort": 1,
+            "multi": true,
+            "includeAll": true,
+            "allValue": "playhub-(backend|frontend|postgres).*",
+            "current": {
+              "text": "All",
+              "value": "$__all"
+            }
+          }
+        ]
+      },
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "CPU respecto del límite (%)",
+          "description": "Uso en cores / límite de CPU. Un contenedor sin límite positivo queda sin porcentaje; ver el panel de cores.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * (sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{job=\"kubelet-resource\",namespace=~\"$namespace\",pod=~\"$pod\",container!=\"\",container!=\"POD\"}[$__rate_interval]))) / on(namespace, pod, container) (max by (namespace, pod, container) (kube_pod_container_resource_limits{job=\"kube-state-metrics\",namespace=~\"$namespace\",pod=~\"$pod\",resource=\"cpu\",unit=\"core\"}) > 0)",
+              "legendFormat": "{{namespace}} / {{pod}} / {{container}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "RAM respecto del límite (%)",
+          "description": "Working set / límite de memoria. Working set incluye memoria activa y parte de la caché; no equivale a RSS.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 0,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * (sum by (namespace, pod, container) (container_memory_working_set_bytes{job=\"kubelet-resource\",namespace=~\"$namespace\",pod=~\"$pod\",container!=\"\",container!=\"POD\"})) / on(namespace, pod, container) (max by (namespace, pod, container) (kube_pod_container_resource_limits{job=\"kube-state-metrics\",namespace=~\"$namespace\",pod=~\"$pod\",resource=\"memory\",unit=\"byte\"}) > 0)",
+              "legendFormat": "{{namespace}} / {{pod}} / {{container}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "CPU consumida (cores)",
+          "description": "Un valor de 0.5 corresponde a medio core. Excluye cgroups agregados y contenedores de infraestructura.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (namespace, pod, container) (rate(container_cpu_usage_seconds_total{job=\"kubelet-resource\",namespace=~\"$namespace\",pod=~\"$pod\",container!=\"\",container!=\"POD\"}[$__rate_interval]))",
+              "legendFormat": "{{namespace}} / {{pod}} / {{container}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "RAM consumida (working set)",
+          "description": "Memoria working set por contenedor, disponible incluso sin límite configurado.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 8,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (namespace, pod, container) (container_memory_working_set_bytes{job=\"kubelet-resource\",namespace=~\"$namespace\",pod=~\"$pod\",container!=\"\",container!=\"POD\"})",
+              "legendFormat": "{{namespace}} / {{pod}} / {{container}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Throughput de red por pod",
+          "description": "Red compartida del pod, deduplicada por interfaz. Recupera etiquetas mediante el UID del pod si cAdvisor/cri-dockerd las omite.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "Bps",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (namespace, pod) (max by (namespace, pod, interface) ((rate(container_network_receive_bytes_total{job=~\"kubelet-cadvisor|cadvisor-network\",namespace=~\"$namespace\",pod=~\"$pod\",interface!=\"lo\"}[$__rate_interval])) or (label_replace(rate(container_network_receive_bytes_total{job=\"kubelet-cadvisor\",pod=\"\",interface!=\"lo\",id=~\".*pod([a-f0-9]{8})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{12}).*\"}[$__rate_interval]), \"pod_uid\", \"$1$2$3$4$5\", \"id\", \".*pod([a-f0-9]{8})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{12}).*\") * on(pod_uid) group_left(namespace, pod) (max by (pod_uid, namespace, pod) (label_replace(kube_pod_info{job=\"kube-state-metrics\",namespace=~\"$namespace\",pod=~\"$pod\"}, \"pod_uid\", \"$1$2$3$4$5\", \"uid\", \"([a-f0-9]{8})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{12})\"))))))",
+              "legendFormat": "{{namespace}} / {{pod}} RX",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            },
+            {
+              "refId": "B",
+              "expr": "sum by (namespace, pod) (max by (namespace, pod, interface) ((rate(container_network_transmit_bytes_total{job=~\"kubelet-cadvisor|cadvisor-network\",namespace=~\"$namespace\",pod=~\"$pod\",interface!=\"lo\"}[$__rate_interval])) or (label_replace(rate(container_network_transmit_bytes_total{job=\"kubelet-cadvisor\",pod=\"\",interface!=\"lo\",id=~\".*pod([a-f0-9]{8})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{12}).*\"}[$__rate_interval]), \"pod_uid\", \"$1$2$3$4$5\", \"id\", \".*pod([a-f0-9]{8})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{12}).*\") * on(pod_uid) group_left(namespace, pod) (max by (pod_uid, namespace, pod) (label_replace(kube_pod_info{job=\"kube-state-metrics\",namespace=~\"$namespace\",pod=~\"$pod\"}, \"pod_uid\", \"$1$2$3$4$5\", \"uid\", \"([a-f0-9]{8})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{4})[-_]([a-f0-9]{12})\"))))))",
+              "legendFormat": "{{namespace}} / {{pod}} TX",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "CPU throttling (%)",
+          "description": "Porcentaje de períodos CFS con throttling; no es porcentaje de tiempo ni porcentaje de CPU utilizada.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 16,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * (max by (namespace, pod, container) ((rate(container_cpu_cfs_throttled_periods_total{job=\"kubelet-cadvisor\",namespace=~\"$namespace\",pod=~\"$pod\",container!=\"\",container!=\"POD\"}[$__rate_interval])) or (label_replace(rate(container_cpu_cfs_throttled_periods_total{job=\"kubelet-cadvisor\",container=\"\",id=~\".*[/-][a-f0-9]{64}([.]scope)?\"}[$__rate_interval]), \"runtime_id\", \"$1\", \"id\", \".*[/-]([a-f0-9]{64})([.]scope)?\") * on(runtime_id) group_left(namespace, pod, container) (max by (runtime_id, namespace, pod, container) (label_replace(kube_pod_container_info{job=\"kube-state-metrics\",namespace=~\"$namespace\",pod=~\"$pod\"}, \"runtime_id\", \"$1\", \"container_id\", \"[^:]+://([a-f0-9]{64})\")))))) / on(namespace, pod, container) (max by (namespace, pod, container) ((rate(container_cpu_cfs_periods_total{job=\"kubelet-cadvisor\",namespace=~\"$namespace\",pod=~\"$pod\",container!=\"\",container!=\"POD\"}[$__rate_interval])) or (label_replace(rate(container_cpu_cfs_periods_total{job=\"kubelet-cadvisor\",container=\"\",id=~\".*[/-][a-f0-9]{64}([.]scope)?\"}[$__rate_interval]), \"runtime_id\", \"$1\", \"id\", \".*[/-]([a-f0-9]{64})([.]scope)?\") * on(runtime_id) group_left(namespace, pod, container) (max by (runtime_id, namespace, pod, container) (label_replace(kube_pod_container_info{job=\"kube-state-metrics\",namespace=~\"$namespace\",pod=~\"$pod\"}, \"runtime_id\", \"$1\", \"container_id\", \"[^:]+://([a-f0-9]{64})\"))))) > 0)",
+              "legendFormat": "{{namespace}} / {{pod}} / {{container}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "PVC ocupado (%)",
+          "description": "Ocupación sobre capacidad real reportada por el driver. Depende del driver de almacenamiento y se filtra por namespace, no por pod. Minikube hostPath puede no publicar estas métricas.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 0,
+            "y": 24,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "orange",
+                    "value": 80
+                  },
+                  {
+                    "color": "red",
+                    "value": 90
+                  }
+                ]
+              },
+              "max": 100
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_used_bytes{job=\"kubelet\",namespace=~\"$namespace\",persistentvolumeclaim=~\"playhub-.*\"}) / on(namespace, persistentvolumeclaim) (max by (namespace, persistentvolumeclaim) (kubelet_volume_stats_capacity_bytes{job=\"kubelet\",namespace=~\"$namespace\",persistentvolumeclaim=~\"playhub-.*\"}) > 0)",
+              "legendFormat": "{{namespace}} / {{persistentvolumeclaim}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "type": "timeseries",
+          "title": "Estado de recolección",
+          "description": "1 = objetivo accesible; 0 = scrape fallido. Un objetivo ausente no aparece: comprobar también la página Targets de Prometheus.",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "playhub-prometheus"
+          },
+          "gridPos": {
+            "x": 12,
+            "y": 24,
+            "w": 12,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "up{job=~\"node-exporter|kube-state-metrics|kubelet-cadvisor|cadvisor-network|kubelet-resource|kubelet\"}",
+              "legendFormat": "{{job}} / {{instance}}",
+              "range": true,
+              "editorMode": "code",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "playhub-prometheus"
+              }
+            }
+          ]
+        }
+      ]
+    }

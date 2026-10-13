@@ -89,10 +89,10 @@ Write-Host "Namespace: $namespace"
 Write-Host "Solo se eliminaran recursos con nombres propios de PlayHub."
 
 if ($DeleteData) {
-    Write-Warning "-DeleteData eliminara playhub-postgres-data y todos los datos de PostgreSQL."
+    Write-Warning "-DeleteData eliminara los PVC y los datos de PostgreSQL, Prometheus y Grafana."
 }
 else {
-    Write-Host "El PVC playhub-postgres-data se conservara. Usa -DeleteData para reiniciar tambien la base."
+    Write-Host "Los PVC de PostgreSQL, Prometheus y Grafana se conservaran. Usa -DeleteData para eliminarlos."
 }
 
 $target = "PlayHub en el contexto '$context', namespace '$namespace'"
@@ -101,17 +101,24 @@ if (-not $PSCmdlet.ShouldProcess($target, "Eliminar los recursos desplegados")) 
     return
 }
 
-Write-Host "Deteniendo port-forward de backend y frontend, si existen..."
+Write-Host "Deteniendo port-forward de backend, frontend, Prometheus y Grafana, si existen..."
 Stop-TrackedPortForward -Name "backend" -ProjectRoot $projectRoot
 Stop-TrackedPortForward -Name "frontend" -ProjectRoot $projectRoot
+Stop-TrackedPortForward -Name "prometheus" -ProjectRoot $projectRoot
+Stop-TrackedPortForward -Name "grafana" -ProjectRoot $projectRoot
 
 Invoke-KubectlDelete -Kind "deployment" -Names @(
     "playhub-backend-blue",
     "playhub-backend-green",
     "playhub-frontend-blue",
     "playhub-frontend-green",
-    "playhub-postgres"
+    "playhub-postgres",
+    "playhub-prometheus",
+    "playhub-grafana",
+    "playhub-kube-state-metrics"
 )
+
+Invoke-KubectlDelete -Kind "daemonset" -Names @("playhub-node-exporter", "playhub-cadvisor-network")
 
 Invoke-KubectlDelete -Kind "job" -Names @("playhub-migrations")
 
@@ -122,13 +129,25 @@ Invoke-KubectlDelete -Kind "service" -Names @(
     "playhub-frontend",
     "playhub-frontend-blue",
     "playhub-frontend-green",
-    "playhub-db"
+    "playhub-db",
+    "playhub-prometheus",
+    "playhub-grafana"
 )
 
 Invoke-KubectlDelete -Kind "configmap" -Names @(
     "playhub-config",
-    "playhub-migration-sql"
+    "playhub-migration-sql",
+    "playhub-prometheus-config",
+    "playhub-grafana-datasources",
+    "playhub-grafana-dashboard-provider",
+    "playhub-grafana-resource-dashboards"
 )
+
+Invoke-KubectlDelete -Kind "rolebinding" -Names @("playhub-prometheus-discovery", "playhub-kube-state-metrics")
+Invoke-KubectlDelete -Kind "role" -Names @("playhub-prometheus-discovery", "playhub-kube-state-metrics")
+Invoke-KubectlDelete -Kind "serviceaccount" -Names @("playhub-prometheus", "playhub-kube-state-metrics")
+Invoke-KubectlDelete -Kind "clusterrolebinding" -Names @("playhub-prometheus-nodes")
+Invoke-KubectlDelete -Kind "clusterrole" -Names @("playhub-prometheus-nodes")
 
 Invoke-KubectlDelete -Kind "secret" -Names @("playhub-secrets")
 
@@ -153,7 +172,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if ($DeleteData) {
-    Invoke-KubectlDelete -Kind "pvc" -Names @("playhub-postgres-data")
+    Invoke-KubectlDelete -Kind "pvc" -Names @("playhub-postgres-data", "playhub-prometheus-data", "playhub-grafana-data")
 }
 
 if ($RemoveImages) {
@@ -186,5 +205,5 @@ if ($RemoveImages) {
 Write-Host "Limpieza de PlayHub terminada."
 
 if (-not $DeleteData) {
-    Write-Host "Se conservo persistentvolumeclaim/playhub-postgres-data."
+    Write-Host "Se conservaron los PVC de PostgreSQL, Prometheus y Grafana."
 }

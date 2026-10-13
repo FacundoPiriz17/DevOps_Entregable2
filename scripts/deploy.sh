@@ -21,7 +21,7 @@ usage() {
     "  --frontend-api-url URL      URL publica del backend (default: http://localhost:8080)." \
     "  --skip-build                No reconstruye las imagenes." \
     "  --skip-image-load           No importa las imagenes al runtime del cluster." \
-    "  --no-port-forward           No inicia los kubectl port-forward de backend/frontend." \
+    "  --no-port-forward           No abre backend, frontend, Prometheus ni Grafana." \
     "  -h, --help                  Muestra esta ayuda."
 }
 
@@ -416,6 +416,17 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "$script_dir/.." && pwd)"
 migration_directory="$project_root/backend/src/main/resources/db/migration"
 
+secret_manifest="$project_root/k8s/secret.yaml"
+secret_example="$project_root/k8s/secret.yaml.example"
+if [[ ! -e "$secret_manifest" ]]; then
+  if [[ ! -f "$secret_example" ]]; then
+    echo "Faltan k8s/secret.yaml y k8s/secret.yaml.example." >&2
+    exit 1
+  fi
+  cp "$secret_example" "$secret_manifest"
+  echo "Se creo k8s/secret.yaml a partir de k8s/secret.yaml.example."
+fi
+
 if [[ ! -d "$migration_directory" ]]; then
   echo "No se encontro el directorio de migraciones: $migration_directory" >&2
   exit 1
@@ -479,6 +490,7 @@ manifest_files=(
   "k8s/frontend-service.yaml"
   "k8s/backend-blue-deployment.yaml"
   "k8s/frontend-blue-deployment.yaml"
+  "k8s/monitoring/"
 )
 
 if [[ "$deploy_green" == true ]]; then
@@ -644,6 +656,42 @@ if [[ "$deploy_green" == true ]]; then
 fi
 
 echo
+echo "Desplegando Prometheus, Grafana y exporters..."
+prometheus_existed=false
+grafana_existed=false
+if kubectl get deployment playhub-prometheus >/dev/null 2>&1; then
+  prometheus_existed=true
+fi
+if kubectl get deployment playhub-grafana >/dev/null 2>&1; then
+  grafana_existed=true
+fi
+
+kubectl apply --namespace "$current_namespace" -f k8s/monitoring/
+# El binding del manifiesto usa default; ajustarlo al namespace del despliegue.
+kubectl create clusterrolebinding playhub-prometheus-nodes \
+  --clusterrole=playhub-prometheus-nodes \
+  --serviceaccount="$current_namespace:playhub-prometheus" \
+  --dry-run=client -o json | kubectl apply -f -
+
+if [[ "$prometheus_existed" == true ]]; then
+  kubectl rollout restart deployment/playhub-prometheus
+fi
+if [[ "$grafana_existed" == true ]]; then
+  kubectl rollout restart deployment/playhub-grafana
+fi
+for resource in \
+  daemonset/playhub-node-exporter \
+  daemonset/playhub-cadvisor-network \
+  deployment/playhub-kube-state-metrics \
+  deployment/playhub-prometheus \
+  deployment/playhub-grafana; do
+  if ! kubectl rollout status "$resource" --timeout=300s; then
+    show_deployment_diagnostics
+    exit 1
+  fi
+done
+
+echo
 echo "Despliegue terminado. Slot activo: Blue"
 
 kubectl get pods
@@ -653,24 +701,28 @@ kubectl get services
 
 if [[ "$no_port_forward" == false ]]; then
   echo
-  echo "Iniciando port-forward de backend y frontend..."
+  echo "Iniciando port-forward de backend, frontend, Prometheus y Grafana..."
 
   port_forward_failed=false
 
   start_tracked_port_forward backend playhub-backend 8080:8080 || port_forward_failed=true
   start_tracked_port_forward frontend playhub-frontend 5745:5745 || port_forward_failed=true
+  start_tracked_port_forward prometheus playhub-prometheus 9090:9090 || port_forward_failed=true
+  start_tracked_port_forward grafana playhub-grafana 3000:3000 || port_forward_failed=true
 
   echo
 
   if [[ "$port_forward_failed" == true ]]; then
     echo "El despliegue termino, pero algun port-forward no pudo iniciarse (ver mensajes arriba)." >&2
-    echo "La app NO es accesible desde el navegador hasta que se resuelva." >&2
+    echo "Alguno de los servicios no es accesible desde el navegador hasta que se resuelva." >&2
     exit 1
   fi
 
   echo "Frontend disponible en: http://localhost:5745"
   echo "Backend disponible en:  http://localhost:8080"
-  echo "Para detenerlos: kill \$(cat logs/port-forward-backend.pid) \$(cat logs/port-forward-frontend.pid)"
+  echo "Prometheus disponible en: http://localhost:9090"
+  echo "Grafana disponible en:    http://localhost:3000"
+  echo "Para detenerlos: kill \$(cat logs/port-forward-backend.pid) \$(cat logs/port-forward-frontend.pid) \$(cat logs/port-forward-prometheus.pid) \$(cat logs/port-forward-grafana.pid)"
 else
   echo "Aviso: se omitio el inicio automatico de port-forward (--no-port-forward)." >&2
 fi
