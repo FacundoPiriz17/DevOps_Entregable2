@@ -17,6 +17,7 @@ import com.devops.backend.modules.auth.dto.AuthResponse;
 import com.devops.backend.modules.auth.dto.LoginRequest;
 import com.devops.backend.modules.auth.dto.RegisterRequest;
 import com.devops.backend.modules.auth.entity.Login;
+import com.devops.backend.modules.auth.metrics.LoginMetrics;
 import com.devops.backend.modules.auth.repository.LoginRepository;
 import com.devops.backend.modules.user.entity.GeneralUser;
 import com.devops.backend.modules.user.entity.Role;
@@ -42,19 +43,22 @@ public class AuthService {
     private final UserRoleService userRoleService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final LoginMetrics loginMetrics;
 
     public AuthService(UserRepository userRepository,
                        LoginRepository loginRepository,
                        GeneralUserRepository generalUserRepository,
                        UserRoleService userRoleService,
                        PasswordEncoder passwordEncoder,
-                       JwtService jwtService) {
+                       JwtService jwtService,
+                       LoginMetrics loginMetrics) {
         this.userRepository = userRepository;
         this.loginRepository = loginRepository;
         this.generalUserRepository = generalUserRepository;
         this.userRoleService = userRoleService;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.loginMetrics = loginMetrics;
     }
 
     /**
@@ -93,6 +97,7 @@ public class AuthService {
                 .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
 
         if (!passwordEncoder.matches(request.password(), login.getPasswordHash())) {
+            loginMetrics.recordFailedLogin();
             throw new BadCredentialsException("Invalid email or password");
         }
         if (!user.isActive()) {

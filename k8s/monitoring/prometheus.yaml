@@ -135,6 +135,12 @@ data:
             replacement: /api/v1/nodes/${1}/proxy/metrics/resource
           - source_labels: [__meta_kubernetes_node_name]
             target_label: instance
+            
+      - job_name: playhub-backend
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets: ["playhub-backend:8080"]
+
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

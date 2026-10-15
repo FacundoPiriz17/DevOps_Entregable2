@@ -5,6 +5,7 @@ import com.devops.backend.common.security.JwtService;
 import com.devops.backend.modules.auth.dto.LoginRequest;
 import com.devops.backend.modules.auth.dto.RegisterRequest;
 import com.devops.backend.modules.auth.entity.Login;
+import com.devops.backend.modules.auth.metrics.LoginMetrics;
 import com.devops.backend.modules.auth.repository.LoginRepository;
 import com.devops.backend.modules.user.entity.GeneralUser;
 import com.devops.backend.modules.user.entity.Role;
@@ -36,10 +37,11 @@ class AuthServiceTest {
     @Mock UserRoleService userRoleService;
     @Mock PasswordEncoder passwordEncoder;
     @Mock JwtService jwtService;
+    @Mock LoginMetrics loginMetrics;
 
     private AuthService service() {
         return new AuthService(userRepository, loginRepository, generalUserRepository,
-                userRoleService, passwordEncoder, jwtService);
+                userRoleService, passwordEncoder, jwtService, loginMetrics);
     }
 
     @Test
