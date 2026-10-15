@@ -19,6 +19,30 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function New-MigrationConfigMapJson {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Directory
+    )
+
+    # Windows PowerShell can replace non-ASCII SQL characters in native pipelines.
+    # Base64 keeps the manifest ASCII and Kubernetes mounts the original bytes.
+    $migrationData = [ordered]@{}
+    foreach ($file in Get-ChildItem -LiteralPath $Directory -File | Sort-Object Name) {
+        $migrationData[$file.Name] = [Convert]::ToBase64String(
+            [System.IO.File]::ReadAllBytes($file.FullName))
+    }
+
+    [ordered]@{
+        apiVersion = "v1"
+        kind = "ConfigMap"
+        metadata = @{ name = "playhub-migration-sql" }
+        # Remove the previous text entries when updating an existing ConfigMap.
+        data = $null
+        binaryData = $migrationData
+    } | ConvertTo-Json -Depth 4
+}
+
 function Assert-Command {
     param(
         [Parameter(Mandatory = $true)]
@@ -666,14 +690,7 @@ try {
 
     Write-Host "Cargando las migraciones SQL en Kubernetes..."
 
-    $migrationManifest = & kubectl create configmap playhub-migration-sql `
-        --from-file="backend/src/main/resources/db/migration" `
-        --dry-run=client `
-        -o json
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "No se pudo generar el ConfigMap con las migraciones."
-    }
+    $migrationManifest = New-MigrationConfigMapJson -Directory $migrationDirectory
 
     $migrationManifest | & kubectl apply -f -
 

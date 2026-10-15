@@ -24,7 +24,7 @@ Despliega la base (ConfigMap, Secret, PostgreSQL), corre las migraciones de Flyw
 
 1. Verifica que `kubectl` esté disponible.
 2. Aplica `configmap.yaml`, `secret.yaml`, `postgres-pvc.yaml`, `postgres-service.yaml` y `postgres-deployment.yaml`, y espera a que el rollout de PostgreSQL complete.
-3. Genera un ConfigMap (`playhub-migration-sql`) a partir de los archivos SQL de migración y lo aplica.
+3. Genera un ConfigMap (`playhub-migration-sql`) a partir de los archivos SQL de migración y lo aplica. PowerShell utiliza `binaryData` en base64 para preservar los bytes originales incluso con pipelines ASCII de Windows PowerShell 5.1; Kubernetes monta los archivos SQL normalmente.
 4. Elimina el Job `playhub-migrations` si existía, aplica `migration-job.yaml`, espera a que el Job complete y muestra sus logs.
 5. Aplica `backend-service.yaml`, `frontend-service.yaml`, `backend-blue-deployment.yaml` y `frontend-blue-deployment.yaml`, y espera a que ambos rollouts del slot Blue completen.
 6. Si se pide, también despliega el slot Green (`backend-green-deployment.yaml`, `frontend-green-deployment.yaml`).
@@ -70,6 +70,13 @@ minikube start
 > ```powershell
 > Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 > ```
+
+Para verificar que las migraciones conservan sus bytes al atravesar un pipeline
+ASCII (incluye tildes y otros caracteres UTF-8), sin desplegar ni acceder al cluster:
+
+```powershell
+.\scripts\tests\migration-configmap.ps1
+```
 
 ## `switch-slot.sh` / `switch-slot.ps1`
 
