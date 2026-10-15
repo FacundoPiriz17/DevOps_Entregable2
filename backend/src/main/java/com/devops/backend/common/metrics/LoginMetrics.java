@@ -1,5 +1,5 @@
 
-package com.devops.backend.modules.auth.metrics;
+package com.devops.backend.common.metrics;
 
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;

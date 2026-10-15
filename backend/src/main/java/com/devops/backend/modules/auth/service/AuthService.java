@@ -11,13 +11,13 @@ package com.devops.backend.modules.auth.service;
  */
 
 import com.devops.backend.common.exception.ApiException;
+import com.devops.backend.common.metrics.LoginMetrics;
 import com.devops.backend.common.security.JwtService;
 import com.devops.backend.common.util.EmailNormalizer;
 import com.devops.backend.modules.auth.dto.AuthResponse;
 import com.devops.backend.modules.auth.dto.LoginRequest;
 import com.devops.backend.modules.auth.dto.RegisterRequest;
 import com.devops.backend.modules.auth.entity.Login;
-import com.devops.backend.modules.auth.metrics.LoginMetrics;
 import com.devops.backend.modules.auth.repository.LoginRepository;
 import com.devops.backend.modules.user.entity.GeneralUser;
 import com.devops.backend.modules.user.entity.Role;

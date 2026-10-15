@@ -17,12 +17,17 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.devops.backend.common.metrics.HttpErrorMetrics;
+import org.springframework.http.HttpStatus;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private final HttpErrorMetrics httpErrorMetrics;
+
     /**
-     * @brief Gestiona las excepciones personalizadas de la API para devolver su estado y código correspondiente.
+     * @brief Gestiona las excepciones personalizadas de la API para devolver su
+     *        estado y código correspondiente.
      *
      * @param ex excepción personalizada de la API.
      * @return respuesta HTTP con la información del error.
@@ -34,7 +39,8 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * @brief Gestiona los errores de credenciales inválidas durante la autenticación.
+     * @brief Gestiona los errores de credenciales inválidas durante la
+     *        autenticación.
      *
      * @param ex excepción generada por credenciales inválidas.
      * @return respuesta HTTP 401 con la información del error.
@@ -58,9 +64,11 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * @brief Gestiona los errores de validación de los datos recibidos en las solicitudes.
+     * @brief Gestiona los errores de validación de los datos recibidos en las
+     *        solicitudes.
      *
-     * @param ex excepción generada cuando los datos de la solicitud no superan la validación.
+     * @param ex excepción generada cuando los datos de la solicitud no superan la
+     *           validación.
      * @return respuesta HTTP 400 con la información del error de validación.
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -71,5 +79,20 @@ public class GlobalExceptionHandler {
                 .orElse("Invalid request");
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiError.of(400, "VALIDATION_ERROR", message));
+    }
+
+    public GlobalExceptionHandler(HttpErrorMetrics httpErrorMetrics) {
+        this.httpErrorMetrics = httpErrorMetrics;
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiError> handleUnexpectedException(Exception ex) {
+        httpErrorMetrics.recordError();
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiError.of(
+                        500,
+                        "INTERNAL_SERVER_ERROR",
+                        "An unexpected error occurred"));
     }
 }
