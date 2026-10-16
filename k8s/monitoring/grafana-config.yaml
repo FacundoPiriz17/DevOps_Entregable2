@@ -1494,7 +1494,7 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: playhub-grafana-datasources
+  name: playhub-grafana-dashboard-provider
   labels:
     app: playhub-grafana
 data:
