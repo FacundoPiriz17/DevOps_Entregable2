@@ -1490,15 +1490,7 @@ data:
         }
       ]
     }
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: playhub-grafana-dashboard-provider
-  labels:
-    app: playhub-grafana
-data:
-  playhub-counters.json: |
+      playhub-counters.json: |
     {
       "annotations": {
         "list": [
@@ -2091,3 +2083,4 @@ data:
       "uid": "playhub-counters",
       "id": null
     }
+    
