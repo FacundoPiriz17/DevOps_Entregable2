@@ -793,6 +793,7 @@ try {
     Write-Host "Desplegando Prometheus, Grafana y exporters..."
     $prometheusExisted = Test-KubectlResourceExists -Kind "deployment" -Name "playhub-prometheus"
     $grafanaExisted = Test-KubectlResourceExists -Kind "deployment" -Name "playhub-grafana"
+    $blackboxExisted = Test-KubectlResourceExists -Kind "deployment" -Name "playhub-blackbox-exporter"
     Invoke-Kubectl -Arguments @("apply", "-n", $currentNamespace, "-f", "k8s/monitoring/")
 
     # El binding del manifiesto usa default; ajustarlo al namespace del despliegue.
@@ -814,11 +815,14 @@ try {
     if ($grafanaExisted) {
         Invoke-Kubectl -Arguments @("rollout", "restart", "deployment/playhub-grafana")
     }
+    if ($blackboxExisted) {
+        Invoke-Kubectl -Arguments @("rollout", "restart", "deployment/playhub-blackbox-exporter")
+    }
     try {
         foreach ($daemonset in @("playhub-node-exporter", "playhub-cadvisor-network")) {
             Invoke-Kubectl -Arguments @("rollout", "status", "daemonset/$daemonset", "--timeout=300s")
         }
-        foreach ($deployment in @("playhub-kube-state-metrics", "playhub-prometheus", "playhub-grafana")) {
+        foreach ($deployment in @("playhub-kube-state-metrics", "playhub-blackbox-exporter", "playhub-prometheus", "playhub-grafana")) {
             Invoke-Kubectl -Arguments @("rollout", "status", "deployment/$deployment", "--timeout=300s")
         }
     }

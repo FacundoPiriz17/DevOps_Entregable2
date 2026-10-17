@@ -108,3 +108,86 @@ kubectl port-forward service/playhub-grafana 3000:3000
 
 Grafana utiliza inicialmente el usuario `admin` y la contraseña `admin`, y solicita
 cambiarla al iniciar sesión por primera vez. Los datos se conservan en los volúmenes.
+
+## Alertas de Kubernetes
+
+Grafana provisiona seis reglas desde `k8s/monitoring/grafana-alerts.yaml`, en la
+carpeta **PlayHub**, grupo **PlayHub - Disponibilidad y recursos**. Se consultan
+cada 30 segundos y se pueden ver en **Alerting > Alert rules**.
+
+| Regla | Condición | Espera antes de disparar |
+| --- | --- | --- |
+| Errores HTTP 500 | Incremento de al menos 5 errores en los últimos 5 minutos | Sin espera adicional |
+| RAM alta de contenedores | Working set superior al 85 % del límite de memoria | 5 minutos continuos |
+| Muchos inicios de sesión fallidos | Incremento de al menos 20 fallos en los últimos 5 minutos | Sin espera adicional |
+| Fallo de recolección de métricas | Algún target falla o desaparece un job esperado | 2 minutos continuos |
+| Backend activo inaccesible | `/actuator/health` no responde HTTP 200 o falta su prueba | 1 minuto continuo |
+| Frontend activo inaccesible | `/login` no responde HTTP 200 o falta su prueba | 1 minuto continuo |
+
+Las reglas se evalúan en Grafana y sus estados se ven allí. Esta configuración
+no agrega destinos de notificación ni modifica las políticas existentes. La
+instalación actual usa el receptor vacío `empty`, por lo que no envía mensajes
+externos. Si se configura un destino en el futuro, las reglas heredarán las
+políticas de notificación de la organización.
+
+La RAM se evalúa por namespace, pod y contenedor para todos los pods `playhub-*`,
+incluidos ambos slots y los servicios de monitoring. Solo se calcula el porcentaje
+cuando hay un límite positivo. Los contenedores ausentes o sin límite no se
+consideran una lectura de RAM igual a cero.
+
+Los contadores de errores e inicios fallidos se consultan en el backend activo
+mediante el Service `playhub-backend`. `increase(...[5m])` evita alertar por el
+total histórico y contempla reinicios del contador. Al cambiar de slot, ese
+Service cambia de proceso: la ventana puede mezclar muestras de ambos slots;
+para analizar cada versión por separado se necesitaría recolección por slot.
+El conteo de errores usa la instrumentación `http_500_errors_total` del backend;
+no incluye fallos HTTP generados por componentes externos al backend.
+
+Blackbox Exporter, definido en `k8s/monitoring/blackbox-exporter.yaml`, realiza
+pruebas HTTP internas a través de los Services estables. Requiere HTTP 200 sin
+redirecciones y tiene un timeout de 5 segundos. El backend se prueba con su
+salud general, que también comprueba dependencias como PostgreSQL; el frontend
+se prueba con la página de login. Cambiar el selector Blue/Green cambia el destino
+de la prueba automáticamente. Esto verifica acceso desde Kubernetes: no comprueba
+el navegador, los port-forward de localhost ni un flujo completo de usuario.
+
+La recolección supervisa los jobs `prometheus`, `node-exporter`,
+`kube-state-metrics`, `cadvisor-network`, `kubelet-cadvisor`, `kubelet`,
+`kubelet-resource`, `playhub-backend`, `blackbox-exporter` y `playhub-active-http`.
+Usa `up` y `absent` para detectar también jobs que ya no aparecen.
+Una prueba HTTP puede fallar aunque la recolección funcione: en ese caso
+`up = 1` y `probe_success = 0`.
+
+La ausencia de datos de una regla aparece como **No Data** y los fallos al
+consultar Prometheus como **Error**, evitando presentar esos casos como saludables.
+La desaparición de un job o de una prueba HTTP genera además su condición de
+alerta explícita. Grafana debe estar ejecutándose para evaluar estas reglas;
+una caída del propio Grafana requiere supervisión externa.
+
+### Cambiar y aplicar las reglas
+
+Las reglas provisionadas se editan en el repositorio. Cambiar los umbrales en
+la expresión PromQL de la consulta `A` y la espera en `for`. La consulta `B`
+dispara cuando `A` devuelve un valor mayor que cero. El despliegue habitual
+incluye las reglas y el exporter. Para actualizar solo monitoring:
+
+```powershell
+kubectl apply --dry-run=server --validate=strict -f k8s/monitoring/
+kubectl apply -f k8s/monitoring/
+kubectl rollout restart deployment/playhub-blackbox-exporter
+kubectl rollout restart deployment/playhub-prometheus
+kubectl rollout restart deployment/playhub-grafana
+kubectl rollout status deployment/playhub-blackbox-exporter --timeout=180s
+kubectl rollout status deployment/playhub-prometheus --timeout=180s
+kubectl rollout status deployment/playhub-grafana --timeout=180s
+```
+
+Los mismos comandos funcionan en Bash. Reiniciar vuelve a montar los ConfigMaps
+actualizados y carga el provisioning al iniciar Grafana. La limpieza normal
+elimina también el exporter y los nuevos ConfigMaps; conserva el PVC de Grafana.
+
+Las alertas de Kubernetes no se provisionan en Docker Compose, cuya configuración sigue siendo
+la base sin exporters ni objetivos de recolección.
+
+Referencias: [provisioning de alertas de Grafana](https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/)
+y [configuración de Blackbox Exporter](https://github.com/prometheus/blackbox_exporter/blob/master/CONFIGURATION.md).
