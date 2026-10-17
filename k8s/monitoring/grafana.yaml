@@ -52,6 +52,9 @@ spec:
             - name: dashboards
               mountPath: /var/lib/grafana/dashboards
               readOnly: true
+            - name: alerting
+              mountPath: /etc/grafana/provisioning/alerting
+              readOnly: true
           readinessProbe:
             httpGet:
               path: /api/health
@@ -76,6 +79,9 @@ spec:
         - name: dashboards
           configMap:
             name: playhub-grafana-resource-dashboards
+        - name: alerting
+          configMap:
+            name: playhub-grafana-alerts
 ---
 apiVersion: v1
 kind: Service

@@ -165,7 +165,8 @@ delete_resources deployment \
   playhub-postgres \
   playhub-prometheus \
   playhub-grafana \
-  playhub-kube-state-metrics
+  playhub-kube-state-metrics \
+  playhub-blackbox-exporter
 
 delete_resources daemonset playhub-node-exporter playhub-cadvisor-network
 
@@ -180,7 +181,8 @@ delete_resources service \
   playhub-frontend-green \
   playhub-db \
   playhub-prometheus \
-  playhub-grafana
+  playhub-grafana \
+  playhub-blackbox-exporter
 
 delete_resources configmap \
   playhub-config \
@@ -188,7 +190,9 @@ delete_resources configmap \
   playhub-prometheus-config \
   playhub-grafana-datasources \
   playhub-grafana-dashboard-provider \
-  playhub-grafana-resource-dashboards
+  playhub-grafana-resource-dashboards \
+  playhub-grafana-alerts \
+  playhub-blackbox-config
 
 delete_resources rolebinding playhub-prometheus-discovery playhub-kube-state-metrics
 delete_resources role playhub-prometheus-discovery playhub-kube-state-metrics

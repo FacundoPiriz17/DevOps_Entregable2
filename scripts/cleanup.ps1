@@ -115,7 +115,8 @@ Invoke-KubectlDelete -Kind "deployment" -Names @(
     "playhub-postgres",
     "playhub-prometheus",
     "playhub-grafana",
-    "playhub-kube-state-metrics"
+    "playhub-kube-state-metrics",
+    "playhub-blackbox-exporter"
 )
 
 Invoke-KubectlDelete -Kind "daemonset" -Names @("playhub-node-exporter", "playhub-cadvisor-network")
@@ -131,7 +132,8 @@ Invoke-KubectlDelete -Kind "service" -Names @(
     "playhub-frontend-green",
     "playhub-db",
     "playhub-prometheus",
-    "playhub-grafana"
+    "playhub-grafana",
+    "playhub-blackbox-exporter"
 )
 
 Invoke-KubectlDelete -Kind "configmap" -Names @(
@@ -140,7 +142,9 @@ Invoke-KubectlDelete -Kind "configmap" -Names @(
     "playhub-prometheus-config",
     "playhub-grafana-datasources",
     "playhub-grafana-dashboard-provider",
-    "playhub-grafana-resource-dashboards"
+    "playhub-grafana-resource-dashboards",
+    "playhub-grafana-alerts",
+    "playhub-blackbox-config"
 )
 
 Invoke-KubectlDelete -Kind "rolebinding" -Names @("playhub-prometheus-discovery", "playhub-kube-state-metrics")

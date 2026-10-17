@@ -659,11 +659,15 @@ echo
 echo "Desplegando Prometheus, Grafana y exporters..."
 prometheus_existed=false
 grafana_existed=false
+blackbox_existed=false
 if kubectl get deployment playhub-prometheus >/dev/null 2>&1; then
   prometheus_existed=true
 fi
 if kubectl get deployment playhub-grafana >/dev/null 2>&1; then
   grafana_existed=true
+fi
+if kubectl get deployment playhub-blackbox-exporter >/dev/null 2>&1; then
+  blackbox_existed=true
 fi
 
 kubectl apply --namespace "$current_namespace" -f k8s/monitoring/
@@ -679,10 +683,14 @@ fi
 if [[ "$grafana_existed" == true ]]; then
   kubectl rollout restart deployment/playhub-grafana
 fi
+if [[ "$blackbox_existed" == true ]]; then
+  kubectl rollout restart deployment/playhub-blackbox-exporter
+fi
 for resource in \
   daemonset/playhub-node-exporter \
   daemonset/playhub-cadvisor-network \
   deployment/playhub-kube-state-metrics \
+  deployment/playhub-blackbox-exporter \
   deployment/playhub-prometheus \
   deployment/playhub-grafana; do
   if ! kubectl rollout status "$resource" --timeout=300s; then

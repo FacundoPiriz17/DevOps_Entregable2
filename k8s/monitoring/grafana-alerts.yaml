@@ -1,0 +1,508 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: playhub-grafana-alerts
+  labels:
+    app: playhub-grafana
+data:
+  # Provisionado al iniciar Grafana; editar aquí y reiniciar su Deployment.
+  playhub-alerts.json: |
+    {
+      "apiVersion": 1,
+      "groups": [
+        {
+          "orgId": 1,
+          "name": "PlayHub - Disponibilidad y recursos",
+          "folder": "PlayHub",
+          "interval": "30s",
+          "rules": [
+            {
+              "uid": "playhub-http-500",
+              "title": "PlayHub - Errores HTTP 500",
+              "condition": "B",
+              "data": [
+                {
+                  "refId": "A",
+                  "datasourceUid": "playhub-prometheus",
+                  "relativeTimeRange": {
+                    "from": 600,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "playhub-prometheus"
+                    },
+                    "expr": "sum(increase(http_500_errors_total{job=\"playhub-backend\"}[5m])) >= bool 5",
+                    "instant": true,
+                    "range": false,
+                    "format": "time_series",
+                    "intervalMs": 15000,
+                    "maxDataPoints": 43200
+                  }
+                },
+                {
+                  "refId": "B",
+                  "datasourceUid": "__expr__",
+                  "relativeTimeRange": {
+                    "from": 0,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "B",
+                    "type": "threshold",
+                    "datasource": {
+                      "type": "__expr__",
+                      "uid": "__expr__"
+                    },
+                    "expression": "A",
+                    "conditions": [
+                      {
+                        "type": "query",
+                        "evaluator": {
+                          "type": "gt",
+                          "params": [
+                            0
+                          ]
+                        },
+                        "operator": {
+                          "type": "and"
+                        },
+                        "query": {
+                          "params": [
+                            "B"
+                          ]
+                        },
+                        "reducer": {
+                          "type": "last",
+                          "params": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "noDataState": "NoData",
+              "execErrState": "Error",
+              "for": "0s",
+              "annotations": {
+                "summary": "5 o más errores HTTP 500 en 5 minutos",
+                "description": "Revisar logs del backend activo y sus dependencias. Se usa el incremento del contador, no su total histórico."
+              },
+              "labels": {
+                "project": "playhub",
+                "severity": "critical",
+                "component": "backend"
+              },
+              "isPaused": false
+            },
+            {
+              "uid": "playhub-container-memory",
+              "title": "PlayHub - RAM alta de contenedores",
+              "condition": "B",
+              "data": [
+                {
+                  "refId": "A",
+                  "datasourceUid": "playhub-prometheus",
+                  "relativeTimeRange": {
+                    "from": 600,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "playhub-prometheus"
+                    },
+                    "expr": "(100 * sum by (namespace, pod, container) (container_memory_working_set_bytes{job=\"kubelet-resource\",pod=~\"playhub-.*\",container!=\"\",container!=\"POD\"}) / on(namespace, pod, container) (max by (namespace, pod, container) (kube_pod_container_resource_limits{job=\"kube-state-metrics\",pod=~\"playhub-.*\",resource=\"memory\",unit=\"byte\"}) > 0)) > bool 85",
+                    "instant": true,
+                    "range": false,
+                    "format": "time_series",
+                    "intervalMs": 15000,
+                    "maxDataPoints": 43200
+                  }
+                },
+                {
+                  "refId": "B",
+                  "datasourceUid": "__expr__",
+                  "relativeTimeRange": {
+                    "from": 0,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "B",
+                    "type": "threshold",
+                    "datasource": {
+                      "type": "__expr__",
+                      "uid": "__expr__"
+                    },
+                    "expression": "A",
+                    "conditions": [
+                      {
+                        "type": "query",
+                        "evaluator": {
+                          "type": "gt",
+                          "params": [
+                            0
+                          ]
+                        },
+                        "operator": {
+                          "type": "and"
+                        },
+                        "query": {
+                          "params": [
+                            "B"
+                          ]
+                        },
+                        "reducer": {
+                          "type": "last",
+                          "params": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "noDataState": "NoData",
+              "execErrState": "Error",
+              "for": "5m",
+              "annotations": {
+                "summary": "RAM superior al 85 % en {{ $labels.pod }} / {{ $labels.container }}",
+                "description": "Working set respecto del límite de memoria, sostenido 5 minutos. Revisar consumo y límites del contenedor; incluye aplicación y monitoring."
+              },
+              "labels": {
+                "project": "playhub",
+                "severity": "warning",
+                "component": "containers"
+              },
+              "isPaused": false
+            },
+            {
+              "uid": "playhub-failed-logins",
+              "title": "PlayHub - Muchos inicios de sesión fallidos",
+              "condition": "B",
+              "data": [
+                {
+                  "refId": "A",
+                  "datasourceUid": "playhub-prometheus",
+                  "relativeTimeRange": {
+                    "from": 600,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "playhub-prometheus"
+                    },
+                    "expr": "sum(increase(failed_logins_total{job=\"playhub-backend\"}[5m])) >= bool 20",
+                    "instant": true,
+                    "range": false,
+                    "format": "time_series",
+                    "intervalMs": 15000,
+                    "maxDataPoints": 43200
+                  }
+                },
+                {
+                  "refId": "B",
+                  "datasourceUid": "__expr__",
+                  "relativeTimeRange": {
+                    "from": 0,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "B",
+                    "type": "threshold",
+                    "datasource": {
+                      "type": "__expr__",
+                      "uid": "__expr__"
+                    },
+                    "expression": "A",
+                    "conditions": [
+                      {
+                        "type": "query",
+                        "evaluator": {
+                          "type": "gt",
+                          "params": [
+                            0
+                          ]
+                        },
+                        "operator": {
+                          "type": "and"
+                        },
+                        "query": {
+                          "params": [
+                            "B"
+                          ]
+                        },
+                        "reducer": {
+                          "type": "last",
+                          "params": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "noDataState": "NoData",
+              "execErrState": "Error",
+              "for": "0s",
+              "annotations": {
+                "summary": "20 o más inicios de sesión fallidos en 5 minutos",
+                "description": "Revisar los intentos de autenticación del backend activo. Es un indicador global, no identifica usuario o IP ni confirma un ataque."
+              },
+              "labels": {
+                "project": "playhub",
+                "severity": "warning",
+                "component": "security"
+              },
+              "isPaused": false
+            },
+            {
+              "uid": "playhub-metrics-scrape",
+              "title": "PlayHub - Fallo de recolección de métricas",
+              "condition": "B",
+              "data": [
+                {
+                  "refId": "A",
+                  "datasourceUid": "playhub-prometheus",
+                  "relativeTimeRange": {
+                    "from": 600,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "playhub-prometheus"
+                    },
+                    "expr": "(1 - min by (job) (up{job=~\"prometheus|node-exporter|kube-state-metrics|cadvisor-network|kubelet-cadvisor|kubelet|kubelet-resource|playhub-backend|blackbox-exporter|playhub-active-http\"}))\nor absent(up{job=\"prometheus\"})\nor absent(up{job=\"node-exporter\"})\nor absent(up{job=\"kube-state-metrics\"})\nor absent(up{job=\"cadvisor-network\"})\nor absent(up{job=\"kubelet-cadvisor\"})\nor absent(up{job=\"kubelet\"})\nor absent(up{job=\"kubelet-resource\"})\nor absent(up{job=\"playhub-backend\"})\nor absent(up{job=\"blackbox-exporter\"})\nor absent(up{job=\"playhub-active-http\"})",
+                    "instant": true,
+                    "range": false,
+                    "format": "time_series",
+                    "intervalMs": 15000,
+                    "maxDataPoints": 43200
+                  }
+                },
+                {
+                  "refId": "B",
+                  "datasourceUid": "__expr__",
+                  "relativeTimeRange": {
+                    "from": 0,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "B",
+                    "type": "threshold",
+                    "datasource": {
+                      "type": "__expr__",
+                      "uid": "__expr__"
+                    },
+                    "expression": "A",
+                    "conditions": [
+                      {
+                        "type": "query",
+                        "evaluator": {
+                          "type": "gt",
+                          "params": [
+                            0
+                          ]
+                        },
+                        "operator": {
+                          "type": "and"
+                        },
+                        "query": {
+                          "params": [
+                            "B"
+                          ]
+                        },
+                        "reducer": {
+                          "type": "last",
+                          "params": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "noDataState": "NoData",
+              "execErrState": "Error",
+              "for": "2m",
+              "annotations": {
+                "summary": "Fallo de recolección en {{ $labels.job }}",
+                "description": "Un target no responde o un job esperado desapareció durante 2 minutos. Revisar Targets de Prometheus y los exporters. Los errores al consultar Prometheus aparecen como Error en Grafana."
+              },
+              "labels": {
+                "project": "playhub",
+                "severity": "critical",
+                "component": "monitoring"
+              },
+              "isPaused": false
+            },
+            {
+              "uid": "playhub-backend-unavailable",
+              "title": "PlayHub - Backend activo inaccesible",
+              "condition": "B",
+              "data": [
+                {
+                  "refId": "A",
+                  "datasourceUid": "playhub-prometheus",
+                  "relativeTimeRange": {
+                    "from": 600,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "playhub-prometheus"
+                    },
+                    "expr": "(1 - probe_success{job=\"playhub-active-http\",component=\"backend\"}) or absent(probe_success{job=\"playhub-active-http\",component=\"backend\"})",
+                    "instant": true,
+                    "range": false,
+                    "format": "time_series",
+                    "intervalMs": 15000,
+                    "maxDataPoints": 43200
+                  }
+                },
+                {
+                  "refId": "B",
+                  "datasourceUid": "__expr__",
+                  "relativeTimeRange": {
+                    "from": 0,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "B",
+                    "type": "threshold",
+                    "datasource": {
+                      "type": "__expr__",
+                      "uid": "__expr__"
+                    },
+                    "expression": "A",
+                    "conditions": [
+                      {
+                        "type": "query",
+                        "evaluator": {
+                          "type": "gt",
+                          "params": [
+                            0
+                          ]
+                        },
+                        "operator": {
+                          "type": "and"
+                        },
+                        "query": {
+                          "params": [
+                            "B"
+                          ]
+                        },
+                        "reducer": {
+                          "type": "last",
+                          "params": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "noDataState": "NoData",
+              "execErrState": "Error",
+              "for": "1m",
+              "annotations": {
+                "summary": "Backend activo inaccesible durante 1 minuto",
+                "description": "La prueba HTTP interna requiere 200 en /actuator/health del Service playhub-backend, incluyendo el estado de sus dependencias. Revisar el slot activo, endpoints y PostgreSQL."
+              },
+              "labels": {
+                "project": "playhub",
+                "severity": "critical",
+                "component": "backend"
+              },
+              "isPaused": false
+            },
+            {
+              "uid": "playhub-frontend-unavailable",
+              "title": "PlayHub - Frontend activo inaccesible",
+              "condition": "B",
+              "data": [
+                {
+                  "refId": "A",
+                  "datasourceUid": "playhub-prometheus",
+                  "relativeTimeRange": {
+                    "from": 600,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "A",
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "playhub-prometheus"
+                    },
+                    "expr": "(1 - probe_success{job=\"playhub-active-http\",component=\"frontend\"}) or absent(probe_success{job=\"playhub-active-http\",component=\"frontend\"})",
+                    "instant": true,
+                    "range": false,
+                    "format": "time_series",
+                    "intervalMs": 15000,
+                    "maxDataPoints": 43200
+                  }
+                },
+                {
+                  "refId": "B",
+                  "datasourceUid": "__expr__",
+                  "relativeTimeRange": {
+                    "from": 0,
+                    "to": 0
+                  },
+                  "model": {
+                    "refId": "B",
+                    "type": "threshold",
+                    "datasource": {
+                      "type": "__expr__",
+                      "uid": "__expr__"
+                    },
+                    "expression": "A",
+                    "conditions": [
+                      {
+                        "type": "query",
+                        "evaluator": {
+                          "type": "gt",
+                          "params": [
+                            0
+                          ]
+                        },
+                        "operator": {
+                          "type": "and"
+                        },
+                        "query": {
+                          "params": [
+                            "B"
+                          ]
+                        },
+                        "reducer": {
+                          "type": "last",
+                          "params": []
+                        }
+                      }
+                    ]
+                  }
+                }
+              ],
+              "noDataState": "NoData",
+              "execErrState": "Error",
+              "for": "1m",
+              "annotations": {
+                "summary": "Frontend activo inaccesible durante 1 minuto",
+                "description": "La prueba HTTP interna requiere 200 en /login del Service playhub-frontend. Revisar slot activo, endpoints y logs del frontend."
+              },
+              "labels": {
+                "project": "playhub",
+                "severity": "critical",
+                "component": "frontend"
+              },
+              "isPaused": false
+            }
+          ]
+        }
+      ]
+    }
