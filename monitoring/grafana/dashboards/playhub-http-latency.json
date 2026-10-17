@@ -1,5 +1,5 @@
 {
-  "title": "Latencia HTTP - PlayHub Backend",
+  "title": "PlayHub - Latencia HTTP",
   "uid": "playhub-http-latency",
   "schemaVersion": 39,
   "version": 1,
@@ -8,7 +8,7 @@
     "from": "now-30m",
     "to": "now"
   },
-  "tags": ["http", "latencia", "prometheus"],
+  "tags": ["playhub", "http", "latencia", "prometheus"],
   "panels": [
     {
       "id": 1,
@@ -22,7 +22,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "playhub-prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -67,7 +67,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "playhub-prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -95,7 +95,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "playhub-prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -123,7 +123,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "playhub-prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -168,7 +168,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "playhub-prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -217,7 +217,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "playhub-prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -256,7 +256,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "playhub-prometheus"
       },
       "options": {
         "calculate": false,
@@ -289,7 +289,7 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
+        "uid": "playhub-prometheus"
       },
       "fieldConfig": {
         "defaults": {
@@ -311,17 +311,7 @@
     }
   ],
   "templating": {
-    "list": [
-      {
-        "name": "DS_PROMETHEUS",
-        "label": "Datasource",
-        "type": "datasource",
-        "query": "prometheus",
-        "current": {},
-        "hide": 0,
-        "refresh": 1
-      }
-    ]
+    "list": []
   },
   "id": null
 }

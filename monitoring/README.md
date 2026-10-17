@@ -73,9 +73,12 @@ Exportar solo descarga una copia; Grafana no la agrega al despliegue automática
 
 ### Scraping del backend
 
-El job `playhub-backend` consulta `http://playhub-backend:8080/actuator/prometheus`
-cada 15 segundos. El servicio apunta al slot activo de Blue/Green. Este endpoint
-permite `GET` sin JWT; la API mantiene su autenticación habitual.
+El job `playhub-backend` descubre por service discovery los Pods del backend
+de la ejecución y los scrapea en `/actuator/prometheus` cada 15 segundos,
+agregando el label `slot` (blue/green) a cada serie. De esta manera el
+dashboard **PlayHub - Blue/Green** puede comparar el tráfico y la latencia de
+cada slot, incluido el que no está recibiendo tráfico del Service estable.
+Este endpoint permite `GET` sin JWT; la API mantiene su autenticación habitual.
 
 Al cambiar el código Java o las dependencias, hay que reconstruir las imágenes,
 cargarlas en el cluster y recrear los pods. Aplicar solamente los manifiestos de
@@ -108,3 +111,42 @@ kubectl port-forward service/playhub-grafana 3000:3000
 
 Grafana utiliza inicialmente el usuario `admin` y la contraseña `admin`, y solicita
 cambiarla al iniciar sesión por primera vez. Los datos se conservan en los volúmenes.
+
+## Generar datos para la demo
+
+Con la aplicación desplegada y los port-forward activos, existe un script que
+genera tráfico real contra la API para alimentar todos los dashboards:
+
+### Windows PowerShell
+
+```powershell
+.\scripts\demo-monitoring.ps1
+```
+
+### Linux/macOS (o Git Bash)
+
+```bash
+./scripts/demo-monitoring.sh
+```
+
+El script:
+
+1. Espera a que backend, frontend y Prometheus respondan (o despliega todo con
+   `-Deploy` / `--deploy`).
+2. Genera logins fallidos, registro e ingreso de usuarios sintéticos, lecturas
+   de catálogo, carritos, compras, wishlist y errores 4xx.
+3. Aplica una ráfaga de carga concurrente contra backend y frontend para mover
+   CPU, RAM y red de los workloads y del nodo.
+4. Desactiva los usuarios sintéticos creados (salvo `-KeepUsers` / `--keep-users`).
+5. Consulta Prometheus y verifica que `failed_logins_total`,
+   `total_purchases_total`, `total_earnings_currency_units_total` y
+   `http_server_requests_seconds_count` aumentaron. Sale con código 0 solo si
+   la verificación pasa.
+
+Luego abrir la carpeta **PlayHub** en http://localhost:3000:
+
+- `PlayHub - Counters`: compras, ganancias, logins fallidos.
+- `PlayHub - Latencia HTTP`: p50/p95/p99, throughput y latencia por endpoint.
+- `PlayHub - Blue/Green`: tráfico y latencia por slot.
+- `PlayHub - Recursos de workloads` y `PlayHub - Recursos de nodos`: CPU, RAM,
+  disco y red.

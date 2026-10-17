@@ -917,6 +917,30 @@ El tráfico vuelve inmediatamente al slot anterior sin cambiar las URLs utilizad
 
 ---
 
+## 11. Generar datos para los dashboards de Grafana
+
+Abrir Grafana en `http://localhost:3000` (carpeta **PlayHub**) y ejecutar el
+script de demo de monitoreo, que genera tráfico real contra la API (compras,
+logins fallidos, catálogo, wishlist, errores y una ráfaga de carga) y verifica
+que las métricas aumentaron:
+
+### Windows
+
+```powershell
+.\scripts\demo-monitoring.ps1
+```
+
+### Linux/macOS
+
+```bash
+./scripts/demo-monitoring.sh
+```
+
+Al terminar, el script imprime la tabla de métricas antes/después y los
+enlaces a los dashboards de contadores, latencia, Blue/Green y recursos.
+
+---
+
 # Estructura Kubernetes
 
 Los manifiestos se encuentran en:
@@ -975,6 +999,25 @@ switch-slot.ps1
 ```text
 cleanup.sh
 cleanup.ps1
+```
+
+## Demo de monitoreo
+
+```text
+demo-monitoring.sh
+demo-monitoring.ps1
+```
+
+Genera tráfico real contra la API para alimentar los dashboards de Grafana y
+verifica en Prometheus que las métricas aumentaron. Ver
+[monitoring/README.md](monitoring/README.md).
+
+```powershell
+.\scripts\demo-monitoring.ps1 -Deploy -DeployGreen
+```
+
+```bash
+./scripts/demo-monitoring.sh --deploy --deploy-green
 ```
 
 Existe documentación adicional sobre los scripts en:
