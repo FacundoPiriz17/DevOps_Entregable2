@@ -32,7 +32,7 @@ Despliega la base (ConfigMap, Secret, PostgreSQL), corre las migraciones de Flyw
 8. Muestra un resumen: pods, jobs, PVCs y services.
 9. Inicia automáticamente `kubectl port-forward` para backend (`localhost:8080`), frontend (`localhost:5745`), Prometheus (`localhost:9090`) y Grafana (`localhost:3000`). Los procesos quedan en segundo plano, con PID y log bajo `logs/port-forward-<backend|frontend|prometheus|grafana>.{pid,log}`. Volver a ejecutar el despliegue reemplaza los accesos anteriores. `--no-port-forward` / `-NoPortForward` omite los cuatro accesos, pero despliega el monitoreo igualmente.
 
-Grafana aprovisiona la fuente Prometheus y los dashboards de nodos y workloads en la carpeta **PlayHub**. El usuario inicial es `admin` y la contraseña inicial es `admin`; se conservan en el PVC después de cambiarlos.
+Grafana aprovisiona la fuente Prometheus y los dashboards de nodos, workloads y contadores en la carpeta **PlayHub**. El usuario inicial es `admin` y la contraseña inicial es `admin`; se conservan en el PVC después de cambiarlos. Para incorporar dashboards exportados, actualizar su contenido en el ConfigMap de `k8s/monitoring/grafana-config.yaml` antes del deploy. Ver [persistencia y exportación](../monitoring/README.md#persistencia-y-dashboards-exportados).
 
 ### Uso — Linux/macOS (Bash)
 
