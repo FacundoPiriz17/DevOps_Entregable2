@@ -11,6 +11,7 @@ package com.devops.backend.modules.cart.service;
  */
 
 import com.devops.backend.common.exception.ApiException;
+import com.devops.backend.common.metrics.PurchaseMetrics;
 import com.devops.backend.modules.cart.dto.CartItemResponse;
 import com.devops.backend.modules.cart.entity.CartItem;
 import com.devops.backend.modules.cart.entity.CartItemId;
@@ -23,13 +24,15 @@ import com.devops.backend.modules.library.service.LibraryService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * @brief Proporciona la lógica necesaria para añadir, consultar, eliminar y comprar juegos del carrito.
+ * @brief Proporciona la lógica necesaria para añadir, consultar, eliminar y
+ *        comprar juegos del carrito.
  *
  */
 @Service
@@ -38,22 +41,25 @@ public class CartService {
     private final GameRepository gameRepository;
     private final LibraryEntryRepository libraryEntryRepository;
     private final LibraryService libraryService;
+    private final PurchaseMetrics purchaseMetrics;
 
     public CartService(CartItemRepository cartItemRepository,
-                       GameRepository gameRepository,
-                       LibraryEntryRepository libraryEntryRepository,
-                       LibraryService libraryService) {
+            GameRepository gameRepository,
+            LibraryEntryRepository libraryEntryRepository,
+            LibraryService libraryService,
+            PurchaseMetrics purchaseMetrics) {
         this.cartItemRepository = cartItemRepository;
         this.gameRepository = gameRepository;
         this.libraryEntryRepository = libraryEntryRepository;
         this.libraryService = libraryService;
+        this.purchaseMetrics = purchaseMetrics;
     }
 
     /**
      * @brief Añade un juego disponible para compra al carrito del usuario.
      *
      * @param userEmail correo electrónico del usuario propietario del carrito.
-     * @param gameId identificador del juego que se desea añadir.
+     * @param gameId    identificador del juego que se desea añadir.
      * @return información del juego añadido al carrito.
      * @throws ApiException si el juego no existe, no está disponible para compra,
      *                      ya está en la biblioteca o ya está en el carrito.
@@ -81,7 +87,7 @@ public class CartService {
     public List<CartItemResponse> list(String userEmail) {
         List<CartItem> items = cartItemRepository.findByIdUserEmail(userEmail);
         Map<Long, Game> games = gameRepository.findAllById(
-                        items.stream().map(item -> item.getId().getGameId()).toList())
+                items.stream().map(item -> item.getId().getGameId()).toList())
                 .stream().collect(Collectors.toMap(Game::getId, Function.identity()));
         return items.stream().map(item -> games.get(item.getId().getGameId()))
                 .filter(java.util.Objects::nonNull).map(CartItemResponse::from).toList();
@@ -91,7 +97,7 @@ public class CartService {
      * @brief Elimina un juego del carrito del usuario.
      *
      * @param userEmail correo electrónico del usuario propietario del carrito.
-     * @param gameId identificador del juego que se desea eliminar.
+     * @param gameId    identificador del juego que se desea eliminar.
      * @return no devuelve ningún valor.
      * @throws ApiException si el juego no se encuentra en el carrito.
      */
@@ -105,20 +111,36 @@ public class CartService {
     }
 
     /**
-     * @brief Procesa la compra de todos los juegos incluidos en el carrito y los añade a la biblioteca del usuario.
+     * @brief Procesa la compra de todos los juegos incluidos en el carrito y los
+     *        añade a la biblioteca del usuario.
      *
      * @param userEmail correo electrónico del usuario que realiza la compra.
      * @return lista de juegos adquiridos e incorporados a la biblioteca.
-     * @throws ApiException si el carrito está vacío o alguno de los juegos no puede añadirse a la biblioteca.
+     * @throws ApiException si el carrito está vacío o alguno de los juegos no puede
+     *                      añadirse a la biblioteca.
      */
     @Transactional
     public List<LibraryEntryResponse> checkout(String userEmail) {
         List<CartItem> items = cartItemRepository.findByIdUserEmail(userEmail);
-        if (items.isEmpty()) throw ApiException.badRequest("EMPTY_CART", "The cart is empty");
+        if (items.isEmpty())
+            throw ApiException.badRequest("EMPTY_CART", "The cart is empty");
+        
+        BigDecimal total = items.stream()
+                .map(item -> gameRepository.findById(item.getId().getGameId())
+                        .orElseThrow()
+                        .getPrice())
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         List<LibraryEntryResponse> purchased = items.stream()
-                .map(item -> libraryService.addToLibrary(userEmail, item.getId().getGameId()))
+                .map(item -> libraryService.addToLibrary(
+                        userEmail, item.getId().getGameId()))
                 .toList();
+
         cartItemRepository.deleteAll(items);
+
+        purchaseMetrics.recordPurchase();
+        purchaseMetrics.recordEarnings(total.doubleValue());
+
         return purchased;
     }
 
@@ -127,7 +149,8 @@ public class CartService {
      *
      * @param gameId identificador del juego que se desea comprobar.
      * @return juego disponible para la compra.
-     * @throws ApiException si el juego no existe o no está disponible para su compra.
+     * @throws ApiException si el juego no existe o no está disponible para su
+     *                      compra.
      */
     private Game requirePurchasableGame(Long gameId) {
         Game game = gameRepository.findById(gameId)

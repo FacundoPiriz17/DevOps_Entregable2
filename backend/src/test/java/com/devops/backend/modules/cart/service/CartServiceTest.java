@@ -1,6 +1,7 @@
 package com.devops.backend.modules.cart.service;
 
 import com.devops.backend.common.exception.ApiException;
+import com.devops.backend.common.metrics.PurchaseMetrics;
 import com.devops.backend.modules.cart.entity.CartItem;
 import com.devops.backend.modules.cart.repository.CartItemRepository;
 import com.devops.backend.modules.game.entity.Game;
@@ -8,6 +9,7 @@ import com.devops.backend.modules.game.entity.GameStatus;
 import com.devops.backend.modules.game.repository.GameRepository;
 import com.devops.backend.modules.library.repository.LibraryEntryRepository;
 import com.devops.backend.modules.library.service.LibraryService;
+
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -27,7 +29,8 @@ class CartServiceTest {
     private final GameRepository games = mock(GameRepository.class);
     private final LibraryEntryRepository library = mock(LibraryEntryRepository.class);
     private final LibraryService libraryService = mock(LibraryService.class);
-    private final CartService service = new CartService(cart, games, library, libraryService);
+    private final PurchaseMetrics purchaseMetrics = mock(PurchaseMetrics.class);
+    private final CartService service = new CartService(cart, games, library, libraryService, purchaseMetrics);
 
     @Test
     void add_purchasableGameCreatesCartItem() {

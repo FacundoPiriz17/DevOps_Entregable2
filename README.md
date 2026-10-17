@@ -19,7 +19,7 @@ La aplicación está compuesta por:
 
 El proyecto incluye scripts para automatizar el despliegue, cambio de slot y limpieza del entorno Kubernetes tanto en **Windows PowerShell** como en **Linux/macOS**.
 
-Incluye **Prometheus** y **Grafana**, con recolección de recursos y dashboards automáticos para Kubernetes: CPU, RAM, disco, red y throughput de I/O, tanto de nodos como de workloads Blue/Green. Docker Compose conserva los servicios base. Ver [instrucciones de uso](monitoring/README.md).
+Incluye **Prometheus** y **Grafana**, con recolección de recursos y dashboards automáticos para Kubernetes: CPU, RAM, disco, red y throughput de I/O, tanto de nodos como de workloads Blue/Green, además de contadores del backend. Docker Compose conserva los servicios base. Ver [instrucciones de uso](monitoring/README.md).
 
 ---
 

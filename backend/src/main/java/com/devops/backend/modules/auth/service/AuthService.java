@@ -11,6 +11,7 @@ package com.devops.backend.modules.auth.service;
  */
 
 import com.devops.backend.common.exception.ApiException;
+import com.devops.backend.common.metrics.LoginMetrics;
 import com.devops.backend.common.security.JwtService;
 import com.devops.backend.common.util.EmailNormalizer;
 import com.devops.backend.modules.auth.dto.AuthResponse;
@@ -42,19 +43,22 @@ public class AuthService {
     private final UserRoleService userRoleService;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final LoginMetrics loginMetrics;
 
     public AuthService(UserRepository userRepository,
                        LoginRepository loginRepository,
                        GeneralUserRepository generalUserRepository,
                        UserRoleService userRoleService,
                        PasswordEncoder passwordEncoder,
-                       JwtService jwtService) {
+                       JwtService jwtService,
+                       LoginMetrics loginMetrics) {
         this.userRepository = userRepository;
         this.loginRepository = loginRepository;
         this.generalUserRepository = generalUserRepository;
         this.userRoleService = userRoleService;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.loginMetrics = loginMetrics;
     }
 
     /**
@@ -93,6 +97,7 @@ public class AuthService {
                 .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
 
         if (!passwordEncoder.matches(request.password(), login.getPasswordHash())) {
+            loginMetrics.recordFailedLogin();
             throw new BadCredentialsException("Invalid email or password");
         }
         if (!user.isActive()) {
