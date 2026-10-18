@@ -134,6 +134,80 @@ Retira la aplicación, el monitoreo, los exporters y sus permisos RBAC, y detien
 .\scripts\cleanup.ps1
 ```
 
+## `demo-monitoring.sh` / `demo-monitoring.ps1`
+
+Genera tráfico real contra la API de PlayHub para alimentar los dashboards de
+Grafana y verificar que la demo de monitoreo produce datos. Usa solamente
+`curl` (sin dependencias externas) y funciona como smoke test: sale con código
+0 solo si las métricas clave aumentaron en Prometheus.
+
+### Qué hace, en orden
+
+1. Opcionalmente ejecuta `deploy.sh` / `deploy.ps1` con la flag `--deploy` /
+   `-Deploy` (acepta `--deploy-green` / `-DeployGreen` y `--cluster-type` /
+   `-ClusterType`).
+2. Espera a que el backend (`/actuator/health`), el frontend y Prometheus
+   respondan; aborta con código 2 si no están disponibles. Verifica que el
+   target `playhub-backend` esté `UP`.
+3. Lee las métricas base en Prometheus (`failed_logins_total`,
+   `total_purchases_total`, `total_earnings_currency_units_total`,
+   `http_server_requests_seconds_count`).
+4. Genera tráfico: logins fallidos, registro e ingreso de usuarios sintéticos,
+   lecturas de catálogo, carritos con compras (alimenta las métricas de
+   compras y ganancias), wishlist, y errores 4xx (404/400/403).
+5. Aplica una ráfaga de carga concurrente contra backend y frontend para mover
+   CPU, RAM y red de los workloads y del nodo.
+6. Desactiva los usuarios sintéticos con el administrador (salvo
+   `--keep-users` / `-KeepUsers`; usa emails únicos por corrida, por lo que no
+   es necesario limpiar entre ejecuciones).
+7. Consulta Prometheus nuevamente, imprime la tabla antes/después con los
+   deltas y los enlaces a los dashboards. Verifica: logins fallidos >= 15,
+   compras >= 1, requests >= 200 y target UP.
+
+### Uso — Linux/macOS (Bash)
+
+```bash
+# Con la aplicación ya desplegada
+./scripts/demo-monitoring.sh
+
+# Desplegar primero y generar tráfico
+./scripts/demo-monitoring.sh --deploy --deploy-green
+
+# Más carga
+./scripts/demo-monitoring.sh --synthetic-users 10 --burst-seconds 60 --burst-concurrency 12
+```
+
+### Uso — Windows PowerShell
+
+```powershell
+# Con la aplicación ya desplegada
+.\scripts\demo-monitoring.ps1
+
+# Desplegar primero y generar tráfico
+.\scripts\demo-monitoring.ps1 -Deploy -DeployGreen
+
+# Más carga
+.\scripts\demo-monitoring.ps1 -SyntheticUsers 10 -BurstSeconds 60 -BurstConcurrency 12
+```
+
+### Opciones principales
+
+```text
+--deploy / -Deploy              Ejecuta el deploy antes de generar tráfico.
+--deploy-green / -DeployGreen   Pasa la opción de Green al deploy.
+--api-url / -ApiUrl             Backend (default: http://localhost:8080).
+--frontend-url / -FrontendUrl   Frontend (default: http://localhost:5745).
+--prometheus-url / -PrometheusUrl  Prometheus (default: http://localhost:9090).
+--synthetic-users / -SyntheticUsers  Usuarios sintéticos (default: 5).
+--burst-seconds / -BurstSeconds     Duración de la ráfaga (default: 30).
+--burst-concurrency / -BurstConcurrency  Workers (default: 8).
+--keep-users / -KeepUsers       No desactiva los usuarios sintéticos.
+--skip-frontend / -SkipFrontend No genera tráfico contra el frontend.
+```
+
+Ver [monitoring/README.md](../monitoring/README.md) para más detalles sobre la
+demo de monitoreo.
+
 ## Flujo típico de despliegue Blue/Green
 
 ```bash

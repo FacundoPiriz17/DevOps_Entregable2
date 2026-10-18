@@ -136,10 +136,30 @@ data:
           - source_labels: [__meta_kubernetes_node_name]
             target_label: instance
 
+      # Descubre todos los pods de backend (Blue y Green) y agrega el label
+      # slot para poder comparar el trafico entre slots en Grafana.
       - job_name: playhub-backend
         metrics_path: /actuator/prometheus
-        static_configs:
-          - targets: ["playhub-backend:8080"]
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              own_namespace: true
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: playhub-backend
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: http
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_phase]
+            regex: Running
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_label_slot]
+            target_label: slot
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
 
       - job_name: blackbox-exporter
         static_configs:
