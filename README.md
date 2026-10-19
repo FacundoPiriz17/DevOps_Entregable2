@@ -924,6 +924,10 @@ script de demo de monitoreo, que genera tráfico real contra la API (compras,
 logins fallidos, catálogo, wishlist, errores y una ráfaga de carga) y verifica
 que las métricas aumentaron:
 
+Requisitos: `curl.exe` y Windows PowerShell 5.1 o PowerShell 7 en Windows;
+en Bash, `curl`, Python 3, Bash 4+ y `shuf`. La lectura de JSON está integrada
+en los scripts y no requiere archivos auxiliares.
+
 ### Windows
 
 ```powershell
@@ -938,6 +942,12 @@ que las métricas aumentaron:
 
 Al terminar, el script imprime la tabla de métricas antes/después y los
 enlaces a los dashboards de contadores, latencia, Blue/Green y recursos.
+Espera hasta 180 segundos a que Prometheus recolecte los datos nuevos
+(configurable con `-TimeoutSec` / `--timeout`). Sale con código 0 si registra
+al menos 15 logins fallidos, una compra y 200 requests adicionales, el target
+está UP y la creación y limpieza de usuarios sintéticos se completan.
+Los usuarios se desactivan al finalizar; `-KeepUsers` / `--keep-users` los conserva.
+Ver [opciones de los scripts](scripts/README.md#demo-monitoringsh--demo-monitoringps1).
 
 ---
 

@@ -138,7 +138,8 @@ Retira la aplicación, el monitoreo, los exporters y sus permisos RBAC, y detien
 
 Genera tráfico real contra la API de PlayHub para alimentar los dashboards de
 Grafana y verificar que la demo de monitoreo produce datos. Usa solamente
-`curl` (sin dependencias externas) y funciona como smoke test: sale con código
+`curl`; la versión Bash requiere también Python 3 para leer JSON y Bash 4+
+(usa `mapfile` y `shuf`). Funciona como smoke test: sale con código
 0 solo si las métricas clave aumentaron en Prometheus.
 
 ### Qué hace, en orden
@@ -147,8 +148,9 @@ Grafana y verificar que la demo de monitoreo produce datos. Usa solamente
    `-Deploy` (acepta `--deploy-green` / `-DeployGreen` y `--cluster-type` /
    `-ClusterType`).
 2. Espera a que el backend (`/actuator/health`), el frontend y Prometheus
-   respondan; aborta con código 2 si no están disponibles. Verifica que el
-   target `playhub-backend` esté `UP`.
+   respondan; aborta con código 2 si el backend o Prometheus no están disponibles.
+   Si el frontend no responde, avisa y omite su tráfico. Consulta el estado
+   del target `playhub-backend`; exige que esté `UP` al finalizar.
 3. Lee las métricas base en Prometheus (`failed_logins_total`,
    `total_purchases_total`, `total_earnings_currency_units_total`,
    `http_server_requests_seconds_count`).
@@ -160,7 +162,8 @@ Grafana y verificar que la demo de monitoreo produce datos. Usa solamente
 6. Desactiva los usuarios sintéticos con el administrador (salvo
    `--keep-users` / `-KeepUsers`; usa emails únicos por corrida, por lo que no
    es necesario limpiar entre ejecuciones).
-7. Consulta Prometheus nuevamente, imprime la tabla antes/después con los
+7. Espera hasta `--timeout` / `-TimeoutSec` segundos a que Prometheus recolecte
+   las métricas nuevas (el scrape no es inmediato), imprime la tabla antes/después con los
    deltas y los enlaces a los dashboards. Verifica: logins fallidos >= 15,
    compras >= 1, requests >= 200 y target UP.
 
@@ -201,9 +204,28 @@ Grafana y verificar que la demo de monitoreo produce datos. Usa solamente
 --synthetic-users / -SyntheticUsers  Usuarios sintéticos (default: 5).
 --burst-seconds / -BurstSeconds     Duración de la ráfaga (default: 30).
 --burst-concurrency / -BurstConcurrency  Workers (default: 8).
+--timeout / -TimeoutSec        Espera de disponibilidad y métricas (default: 180 s).
 --keep-users / -KeepUsers       No desactiva los usuarios sintéticos.
 --skip-frontend / -SkipFrontend No genera tráfico contra el frontend.
 ```
+
+Los valores de usuarios, duración, concurrencia y timeout deben ser enteros
+positivos. Cada corrida guarda sus cookies y contadores de carga en un directorio
+único dentro de `logs/`; no borra los archivos de otras corridas. La comprobación
+del frontend sigue las redirecciones HTTP. Si el frontend no responde se omite
+su tráfico y continúa la prueba del backend.
+
+En Windows PowerShell 5.1, el script envía el JSON a `curl.exe` mediante archivos
+temporales UTF-8 para conservar las comillas. Tanto 5.1 como PowerShell 7 están
+soportados. Una consulta inválida de Prometheus o una limpieza incompleta produce
+un resultado fallido.
+La versión Bash puede usarse también desde Git Bash en Windows: normaliza los
+finales de línea al leer JSON. Ambas versiones exigen al menos una compra
+confirmada por su propia corrida, además del incremento observado en Prometheus.
+
+Códigos de salida: `0` para demo verificada, `1` para verificaciones fallidas
+y `2` para requisitos o servicios imprescindibles no disponibles. Los argumentos
+inválidos se rechazan antes de generar tráfico.
 
 Ver [monitoring/README.md](../monitoring/README.md) para más detalles sobre la
 demo de monitoreo.

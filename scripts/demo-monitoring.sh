@@ -6,7 +6,7 @@
 #
 #   1. Opcionalmente despliega la aplicacion invocando deploy.sh (--deploy).
 #   2. Espera a que backend, frontend y Prometheus respondan.
-#   3. Genera trafico contra la API REST con curl (sin dependencias externas):
+#   3. Genera trafico contra la API REST con curl (Python 3 para leer JSON):
 #      logins fallidos, registro e ingreso de usuarios sinteticos, catalogo,
 #      carrito, compras, wishlist, errores 4xx y una ráfaga de carga concurrente
 #      que mueve CPU/RAM/red de los workloads y del nodo.
@@ -101,21 +101,69 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 2
 fi
 
+python_cmd=""
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; sys.exit(sys.version_info.major != 3)' >/dev/null 2>&1; then
+    python_cmd="$candidate"
+    break
+  fi
+done
+if [[ -z "$python_cmd" ]]; then
+  echo "Se requiere Python 3 para leer las respuestas JSON de la API y Prometheus." >&2
+  exit 2
+fi
+for setting in synthetic_users burst_seconds burst_concurrency timeout_sec; do
+  value="${!setting}"
+  if [[ ! "$value" =~ ^[1-9][0-9]{0,4}$ ]]; then
+    echo "Valor invalido para $setting: $value (debe ser un entero positivo)." >&2
+    exit 2
+  fi
+done
+if ((synthetic_users > 1000 || burst_seconds > 86400 || burst_concurrency > 128 || timeout_sec > 86400)); then
+  echo "Parametros fuera de rango (usuarios <= 1000, concurrencia <= 128, segundos <= 86400)." >&2
+  exit 2
+fi
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "$script_dir/.." && pwd)"
 logs_dir="$project_root/logs"
-work_dir="$logs_dir/demo-monitoring"
 mkdir -p "$logs_dir"
-rm -rf "$work_dir"
-mkdir -p "$work_dir"
+work_dir="$(mktemp -d "$logs_dir/demo-monitoring.XXXXXXXX")"
+
+# Parse JSON inside this script: nested category/image IDs must not be treated
+# as game IDs, and a Prometheus API error must not be interpreted as zero.
+json_extract() {
+  "$python_cmd" -c '
+import json, math, sys
+try:
+    payload = json.load(sys.stdin)
+    if sys.argv[1] == "games":
+        if not isinstance(payload, list):
+            raise ValueError("El catalogo no es una lista")
+        ids = dict.fromkeys(game["id"] for game in payload if game.get("available") is True)
+        print("\n".join(str(game_id) for game_id in list(ids)[:12]))
+    else:
+        if payload.get("status") != "success" or payload["data"]["resultType"] != "vector":
+            raise ValueError("Consulta de Prometheus invalida")
+        result = payload["data"]["result"]
+        value = float(result[0]["value"][1]) if result else 0.0
+        if not math.isfinite(value):
+            raise ValueError("Valor de Prometheus no finito")
+        print(value)
+except (ValueError, KeyError, TypeError, IndexError) as error:
+    print(str(error), file=sys.stderr)
+    sys.exit(1)
+' "$1" | tr -d '\r'
+}
 
 admin_email="facundo@playhub.test"
 admin_password="PlayHub123"
 general_email="agostina@playhub.test"
 general_password="PlayHub123"
-run_id="$(date +%Y%m%d%H%M%S)"
+run_id="$(date +%Y%m%d%H%M%S)-${work_dir##*.}"
 failed_login_attempts=15
 error_request_rounds=3
+fail_count=0
 
 if [[ -t 1 ]]; then
   c_step=$'\033[36m'; c_ok=$'\033[32m'; c_warn=$'\033[33m'; c_err=$'\033[31m'; c_off=$'\033[0m'
@@ -154,7 +202,7 @@ wait_http_ok() {
   local url="$1" label="$2" seconds="${3:-$timeout_sec}"
   local deadline=$(( $(date +%s) + seconds ))
   while (($(date +%s) < deadline)); do
-    http_request GET "$url"
+    http_status="$(curl -s -L -o /dev/null -w '%{http_code}' --max-time 30 "$url" 2>/dev/null)" || http_status=0
     if [[ "$http_status" -eq 200 ]]; then return 0; fi
     sleep 2
   done
@@ -173,9 +221,7 @@ prom_value() {
   body="$(cat "$tmp" 2>/dev/null || true)"
   rm -f "$tmp"
   if [[ "$code" != "200" ]]; then echo ""; return; fi
-  local value
-  value="$(printf '%s' "$body" | sed -n 's/.*"value":\[[^,]*,"\([^"]*\)".*/\1/p' | head -n 1)"
-  if [[ -z "$value" ]]; then echo "0"; else echo "$value"; fi
+  printf '%s' "$body" | json_extract prom
 }
 
 # login EMAIL PASSWORD JAR -> 0 si inicio sesion
@@ -194,9 +240,12 @@ register_synthetic() {
   local body
   body="$(printf '{"name":"Demo Load %s","email":"%s","country":"UY","password":"PlayHubDemo123"}' "$index" "$email")"
   http_request POST "$api_url/api/auth/register" "$body"
-  if [[ "$http_status" -eq 201 ]] && do_login "$email" "PlayHubDemo123" "$jar"; then
-    printf '%s %s' "$email" "$jar"
-    return 0
+  if [[ "$http_status" -eq 201 ]]; then
+    registered_email="$email"
+    if do_login "$email" "PlayHubDemo123" "$jar"; then
+      registered_jar="$jar"
+      return 0
+    fi
   fi
   return 1
 }
@@ -242,7 +291,7 @@ ok "Prometheus disponible en $prometheus_url"
 target_up="$(prom_value 'max(up{job="playhub-backend"})')"
 if [[ -z "$target_up" ]]; then
   warn "No se pudo consultar el target playhub-backend en Prometheus."
-elif [[ "$target_up" == "0" ]]; then
+elif awk -v up="$target_up" 'BEGIN { exit !(up < 1) }'; then
   warn "El target playhub-backend esta DOWN en Prometheus (http://localhost:9090/targets)."
 else
   ok "Target playhub-backend UP en Prometheus"
@@ -256,12 +305,24 @@ before_failed="$(prom_value "sum(failed_logins_total)")"
 before_purchases="$(prom_value "sum(total_purchases_total)")"
 before_earnings="$(prom_value "sum(total_earnings_currency_units_total)")"
 before_requests="$(prom_value 'sum(http_server_requests_seconds_count{uri!~"/actuator.*"})')"
-before_failed="${before_failed:-0}"
-before_purchases="${before_purchases:-0}"
-before_earnings="${before_earnings:-0}"
-before_requests="${before_requests:-0}"
+if [[ -z "$before_failed" || -z "$before_purchases" || -z "$before_earnings" || -z "$before_requests" ]]; then
+  err "No se pudieron consultar las metricas base en Prometheus."
+  exit 2
+fi
 info "failed_logins=$before_failed purchases=$before_purchases earnings=$before_earnings http_requests=$before_requests"
-traffic_start="$(date +%s)"
+
+step "Generando $failed_login_attempts logins fallidos"
+failed_responses=0
+for ((i = 0; i < failed_login_attempts; i++)); do
+  http_request POST "$api_url/api/auth/login" "{\"email\":\"$admin_email\",\"password\":\"IncorrectDemoPassword\"}"
+  if [[ "$http_status" -eq 401 ]]; then failed_responses=$((failed_responses + 1)); fi
+done
+if ((failed_responses == failed_login_attempts)); then
+  ok "$failed_responses respuestas 401 de login"
+else
+  err "Solo $failed_responses de $failed_login_attempts logins devolvieron 401."
+  fail_count=$((fail_count + 1))
+fi
 
 # ----------------------------------------------------------------------------
 # Fase 3: sesiones
@@ -286,12 +347,17 @@ fi
 synth_emails=()
 synth_jars=()
 for ((i = 1; i <= synthetic_users; i++)); do
-  if result="$(register_synthetic "$i")"; then
-    synth_emails+=("${result%% *}")
-    synth_jars+=("${result##* }")
-    ok "Usuario sintetico ${result%% *}"
+  registered_email=""
+  registered_jar=""
+  if register_synthetic "$i"; then
+    ok "Usuario sintetico $registered_email"
   else
-    warn "No se pudo registrar el usuario sintetico #$i (puede ya existir)."
+    err "No se pudo registrar/iniciar sesion del usuario sintetico #$i."
+    fail_count=$((fail_count + 1))
+  fi
+  if [[ -n "$registered_email" ]]; then
+    synth_emails+=("$registered_email")
+    synth_jars+=("$registered_jar")
   fi
 done
 
@@ -300,10 +366,10 @@ done
 # ----------------------------------------------------------------------------
 step "Generando trafico de catalogo"
 http_request GET "$api_url/api/games" "" "$admin_jar"
-game_ids="$(printf '%s' "$http_body" | grep -o '"id":[0-9]*' | cut -d: -f2 | sort -un | head -n 12)"
+game_ids="$(printf '%s' "$http_body" | json_extract games)"
 if [[ -z "$game_ids" ]]; then
-  game_ids="$(printf '1\n2\n3\n4\n5\n6\n7\n8\n')"
-  warn "No se pudieron leer los juegos del catalogo; se usaran ids 1..8."
+  err "El catalogo no contiene juegos disponibles para comprar."
+  fail_count=$((fail_count + 1))
 else
   ok "Juegos comprables detectados: $(printf '%s\n' $game_ids | wc -l | tr -d ' ')"
 fi
@@ -367,6 +433,10 @@ if ((${#cart_jars[@]} > 0)); then
   done
 fi
 ok "Compras procesadas: $purchases de ${#cart_jars[@]} usuarios"
+if ((purchases < 1)); then
+  err "Esta corrida no pudo completar ninguna compra."
+  fail_count=$((fail_count + 1))
+fi
 
 # ----------------------------------------------------------------------------
 # Fase 6: wishlist y biblioteca
@@ -396,9 +466,8 @@ ok "Operaciones de wishlist: $wish_ops"
 # Fase 7: errores 4xx (404, 400 y 403)
 # ----------------------------------------------------------------------------
 step "Generando errores 4xx (404/400/403)"
-error_jar="$admin_jar"
+error_jar="$general_jar"
 [[ -n "${synth_jars[0]:-}" ]] && error_jar="${synth_jars[0]}"
-[[ -z "$error_jar" && -n "$general_jar" ]] && error_jar="$general_jar"
 error_ops=0
 for _ in $(seq 1 "$error_request_rounds"); do
   http_request GET "$api_url/api/games/999999" "" "$error_jar"
@@ -418,24 +487,28 @@ burst_start="$(date +%s)"
 burst_pids=()
 for ((w = 0; w < burst_concurrency; w++)); do
   (
+    count=0
     deadline=$(( $(date +%s) + burst_seconds ))
     while (($(date +%s) < deadline)); do
-      curl -s -o /dev/null -b "$admin_jar" --max-time 10 "$api_url/api/games" || true
-      curl -s -o /dev/null -b "$admin_jar" --max-time 10 "$api_url/api/cart" || true
+      if curl -s -o /dev/null -b "$admin_jar" --max-time 10 "$api_url/api/games"; then count=$((count + 1)); fi
+      if curl -s -o /dev/null -b "$admin_jar" --max-time 10 "$api_url/api/cart"; then count=$((count + 1)); fi
       if ! $skip_frontend; then
-        curl -s -o /dev/null --max-time 10 "$frontend_url/" || true
+        if curl -s -L -o /dev/null --max-time 10 "$frontend_url/"; then count=$((count + 1)); fi
       fi
     done
+    printf '%s\n' "$count" > "$work_dir/burst-$w.count"
   ) &
   burst_pids+=($!)
 done
-for pid in "${burst_pids[@]}"; do
-  wait "$pid" 2>/dev/null || true
+burst_total=0
+for w in "${!burst_pids[@]}"; do
+  if ! wait "${burst_pids[$w]}"; then fail_count=$((fail_count + 1)); fi
+  count="$(cat "$work_dir/burst-$w.count" 2>/dev/null || echo 0)"
+  burst_total=$((burst_total + count))
 done
 burst_elapsed=$(( $(date +%s) - burst_start ))
-burst_total=$(( burst_concurrency * burst_seconds * 3 ))
 rps=$(( burst_total / (burst_elapsed > 0 ? burst_elapsed : 1) ))
-ok "Ráfaga completada: ~$burst_total requests en ${burst_elapsed}s (~$rps req/s)"
+ok "Ráfaga completada: $burst_total requests en ${burst_elapsed}s (~$rps req/s)"
 
 # ----------------------------------------------------------------------------
 # Fase 9: limpieza de usuarios sinteticos
@@ -449,6 +522,10 @@ if ! $keep_users && ((${#synth_emails[@]} > 0)); then
     if [[ "$http_status" -eq 200 ]]; then deactivated=$((deactivated + 1)); fi
   done
   ok "$deactivated de ${#synth_emails[@]} usuarios sinteticos desactivados"
+  if ((deactivated != ${#synth_emails[@]})); then
+    err "No se pudo completar la limpieza."
+    fail_count=$((fail_count + 1))
+  fi
 elif ((${#synth_emails[@]} > 0)); then
   info "Usuarios sinteticos conservados (--keep-users): ${#synth_emails[@]}"
 fi
@@ -457,20 +534,22 @@ fi
 # Fase 10: verificacion en Prometheus
 # ----------------------------------------------------------------------------
 step "Verificando metricas en Prometheus"
-now="$(date +%s)"
-elapsed_sec=$(( now - traffic_start + 60 ))
-minutes_window=$(( elapsed_sec / 60 + 2 ))
-((minutes_window < 1)) && minutes_window=1
-
-after_failed="$(prom_value "sum(failed_logins_total)")"
-after_purchases="$(prom_value "sum(total_purchases_total)")"
-after_earnings="$(prom_value "sum(total_earnings_currency_units_total)")"
-after_requests="$(prom_value 'sum(http_server_requests_seconds_count{uri!~"/actuator.*"})')"
-after_up="$(prom_value 'max(up{job="playhub-backend"})')"
-after_failed="${after_failed:-0}"
-after_purchases="${after_purchases:-0}"
-after_earnings="${after_earnings:-0}"
-after_requests="${after_requests:-0}"
+metrics_deadline=$(( $(date +%s) + timeout_sec ))
+while true; do
+  after_failed="$(prom_value "sum(failed_logins_total)")"
+  after_purchases="$(prom_value "sum(total_purchases_total)")"
+  after_earnings="$(prom_value "sum(total_earnings_currency_units_total)")"
+  after_requests="$(prom_value 'sum(http_server_requests_seconds_count{uri!~"/actuator.*"})')"
+  after_up="$(prom_value 'max(up{job="playhub-backend"})')"
+  if [[ -n "$after_failed" && -n "$after_purchases" && -n "$after_earnings" && -n "$after_requests" ]] &&
+      awk -v f="$after_failed" -v bf="$before_failed" -v p="$after_purchases" -v bp="$before_purchases" \
+          -v r="$after_requests" -v br="$before_requests" -v up="${after_up:-0}" \
+          'BEGIN { exit !(f-bf >= 15 && p-bp >= 1 && r-br >= 200 && up >= 1) }'; then
+    break
+  fi
+  if (($(date +%s) >= metrics_deadline)); then break; fi
+  sleep 2
+done
 
 delta() {
   local before="$1" after="$2"
@@ -495,6 +574,11 @@ printf '  %-36s %10s %12s\n' "up{job=playhub-backend}" "-" "${after_up:-?}"
 printf '\n'
 
 checks_ok=true
+if ((fail_count > 0)); then checks_ok=false; fi
+if [[ -z "$after_failed" || -z "$after_purchases" || -z "$after_earnings" || -z "$after_requests" ]]; then
+  err "No se pudieron consultar todas las metricas finales en Prometheus."
+  checks_ok=false
+fi
 check_pass() {
   if awk -v v="$1" -v m="$2" 'BEGIN { exit !(v >= m) }'; then
     ok "$3"
