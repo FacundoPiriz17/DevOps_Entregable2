@@ -1,0 +1,638 @@
+                  
+                  
+┌────────────────┐
+│ Debugging Info │
+└────────────────┘
+                  
+  SCAN ENVIRONMENT
+  versions    - semgrep 1.182.1 on python 3.12.15                      
+  environment - running in environment git, triggering event is unknown
+            
+  CONNECTION
+  Initializing scan (deployment=agustingarciaa, scan_id=258292033)  
+  Enabled products: Supply Chain, Code                                      
+        
+  ENGINE
+  Using Semgrep Pro Version: 1.182.1
+  Installed at /usr/lib/python3.12/site-packages/semgrep/bin/semgrep-core-proprietary
+Rule javascript.vulnerable-components.mise-brotli.mise-brotli contains an include pattern '.mise/config.toml' that will soon be interpreted as '/.mise/config.toml' to comply with the Semgrepignore v2 and Gitignore specifications. To make this pattern permanently unanchored, edit rule javascript.vulnerable-components.mise-brotli.mise-brotli and change it to '**/.mise/config.toml'. To confirm the anchored behavior and avoid this warning, change it to '/.mise/config.toml'.
+Rule javascript.vulnerable-components.mise-brotli.mise-brotli contains an include pattern '.config/mise/config.toml' that will soon be interpreted as '/.config/mise/config.toml' to comply with the Semgrepignore v2 and Gitignore specifications. To make this pattern permanently unanchored, edit rule javascript.vulnerable-components.mise-brotli.mise-brotli and change it to '**/.config/mise/config.toml'. To confirm the anchored behavior and avoid this warning, change it to '/.config/mise/config.toml'.
+Rule javascript.vulnerable-components.mise-brotli.mise-brotli contains an include pattern '.config/mise.toml' that will soon be interpreted as '/.config/mise.toml' to comply with the Semgrepignore v2 and Gitignore specifications. To make this pattern permanently unanchored, edit rule javascript.vulnerable-components.mise-brotli.mise-brotli and change it to '**/.config/mise.toml'. To confirm the anchored behavior and avoid this warning, change it to '/.config/mise.toml'.
+               
+               
+┌─────────────┐
+│ Scan Status │
+└─────────────┘
+  Scanning 202 files tracked by git with 2968 Code rules, 93235 Supply Chain rules:
+            
+            
+  CODE RULES
+                                                                                                                        
+  Language      Rules   Files          Origin      Rules                                                                
+ ─────────────────────────────        ───────────────────                                                               
+  <multilang>      48     202          Pro rules    1893                                                                
+  java            298      84          Community    1075                                                                
+  js              323      36                                                                                           
+  yaml             35      23                                                                                           
+  json              5       8                                                                                           
+  bash              4       5                                                                                           
+                                                                                                                        
+                    
+  SUPPLY CHAIN RULES
+                                                                                                                        
+  Dependency Sources           Resolution Method                     Ecosystem   Dependencies   Rules                   
+ ─────────────────────────────────────────────────────────────────────────────────────────────────────                  
+  frontend/package-lock.json   Lockfile                              Npm         483            93235                   
+  backend/pom.xml              Disabled (use --allow-local-builds)   Unknown     -                  -                   
+                                                                                                                        
+                                                                                                                        
+  Analysis       Rules                                                                                                  
+ ──────────────────────                                                                                                 
+  Malicious      84522                                                                                                  
+  Basic           5954                                                                                                  
+  Reachability    2759                                                                                                  
+                                                                                                                        
+Rule javascript.vulnerable-components.mise-brotli.mise-brotli contains an include pattern '.mise/config.toml' that will soon be interpreted as '/.mise/config.toml' to comply with the Semgrepignore v2 and Gitignore specifications. To make this pattern permanently unanchored, edit rule javascript.vulnerable-components.mise-brotli.mise-brotli and change it to '**/.mise/config.toml'. To confirm the anchored behavior and avoid this warning, change it to '/.mise/config.toml'.
+Rule javascript.vulnerable-components.mise-brotli.mise-brotli contains an include pattern '.config/mise/config.toml' that will soon be interpreted as '/.config/mise/config.toml' to comply with the Semgrepignore v2 and Gitignore specifications. To make this pattern permanently unanchored, edit rule javascript.vulnerable-components.mise-brotli.mise-brotli and change it to '**/.config/mise/config.toml'. To confirm the anchored behavior and avoid this warning, change it to '/.config/mise/config.toml'.
+Rule javascript.vulnerable-components.mise-brotli.mise-brotli contains an include pattern '.config/mise.toml' that will soon be interpreted as '/.config/mise.toml' to comply with the Semgrepignore v2 and Gitignore specifications. To make this pattern permanently unanchored, edit rule javascript.vulnerable-components.mise-brotli.mise-brotli and change it to '**/.config/mise.toml'. To confirm the anchored behavior and avoid this warning, change it to '/.config/mise.toml'.
+  Uploading scan results  
+  Finalizing scan                                              
+                                     
+┌───────────────────────────────────┐
+│ 6 Reachable Supply Chain Findings │
+└───────────────────────────────────┘
+                                                                     
+    frontend/next.config.mjs with lockfile frontend/package-lock.json
+   ❯❯❯❱ next - GHSA-2xp9-vwfh-vxw4
+          Severity: CRITICAL                                                                                  
+          Affected versions of next are vulnerable to  Dependency on Vulnerable Third-Party Component. The    
+          built-in Next.js Image Optimization API (`/_next/image`) passes attacker-supplied AVIF input to     
+          `sharp`, which decodes it with a version of `libheif` containing a heap buffer overflow in          
+          `scale_nearest_neighbor()` (GHSA-g89c-p67h-r497 / CVE-2026-84383). An unauthenticated attacker who  
+          can get the optimizer to fetch a crafted AVIF file — via any host allowed by                        
+          `images.remotePatterns`/`images.domains`, or via any same-origin route that returns user-supplied   
+          bytes — achieves remote code execution on the server. Note that `images.formats` is irrelevant: AVIF
+          *input* is decoded regardless of the configured output formats.                                     
+                                                                                                              
+           ▶▶┆ Fixed for next at versions: 15.5.24, 16.3.3
+            6┆ remotePatterns: [
+            7┆   { protocol: "https", hostname: "shared.fastly.steamstatic.com" },
+            8┆   { protocol: "https", hostname: "imgcdn1.nexarda.com" },
+            9┆   { protocol: "https", hostname: "assets.nintendo.com" },
+           10┆   { protocol: "https", hostname: "en.wikipedia.org" },
+           11┆   { protocol: "https", hostname: "upload.wikimedia.org" },
+           12┆   { protocol: "https", hostname: "media-rockstargames-com.akamaized.net" },
+           13┆   { protocol: "https", hostname: "commons.wikimedia.org" },
+           14┆   { protocol: "https", hostname: "pisces.bbystatic.com" },
+           15┆   { protocol: "https", hostname: "images.launchbox-app.com" },
+             [hid 4 additional lines, adjust with --max-lines-per-finding] 
+   
+   ❯❯❱ next - CVE-2026-94483
+          Severity: HIGH                                                                                      
+          Affected versions of next are vulnerable to Server-Side Request Forgery (SSRF). The built-in Next.js
+          Image Optimization API (`/_next/image`) checks that an allow-listed remote image host does not      
+          resolve to a private IP address, but then resolves the hostname a second time when it actually      
+          fetches the image. An attacker who controls DNS for a host matched by `images.remotePatterns` (or   
+          the deprecated `images.domains`) can use DNS rebinding to pass the check and redirect the fetch to  
+          private or internal IP addresses, resulting in server-side request forgery (SSRF).                  
+                                                                                                              
+           ▶▶┆ Fixed for next at version: 16.3.8
+            6┆ remotePatterns: [
+            7┆   { protocol: "https", hostname: "shared.fastly.steamstatic.com" },
+            8┆   { protocol: "https", hostname: "imgcdn1.nexarda.com" },
+            9┆   { protocol: "https", hostname: "assets.nintendo.com" },
+           10┆   { protocol: "https", hostname: "en.wikipedia.org" },
+           11┆   { protocol: "https", hostname: "upload.wikimedia.org" },
+           12┆   { protocol: "https", hostname: "media-rockstargames-com.akamaized.net" },
+           13┆   { protocol: "https", hostname: "commons.wikimedia.org" },
+           14┆   { protocol: "https", hostname: "pisces.bbystatic.com" },
+           15┆   { protocol: "https", hostname: "images.launchbox-app.com" },
+             [hid 4 additional lines, adjust with --max-lines-per-finding] 
+                              
+    frontend/package-lock.json
+   ❯❯❱ js-yaml - CVE-2026-84375
+          Severity: HIGH                                                                                      
+          Affected versions of js-yaml are vulnerable to Inefficient Algorithmic Complexity / Uncontrolled    
+          Resource Consumption. js-yaml is vulnerable to CPU exhaustion when parsing untrusted YAML: the      
+          `maxTotalMergeKeys` budget is only charged for keys that a merge (`<<`) source actually contributes,
+          so empty mappings cost nothing against the limit. A small document that merges a long sequence of   
+          empty mappings repeatedly forces O(N*K) work while the counter stays flat, stalling the process.    
+          Merge keys are part of the default schema for every load entrypoint (`load`, `loadAll`, and the 3.x 
+          `safeLoad`/`safeLoadAll`), and lowering `maxTotalMergeKeys` does not mitigate it.                   
+                                                                                                              
+           ▶▶┆ Fixed for js-yaml at versions: 3.15.2, 4.3.2
+          5068┆ "node_modules/js-yaml": {
+   
+   ❯❯❯❱ next - GHSA-2xp9-vwfh-vxw4
+          Severity: CRITICAL                                                                                  
+          Affected versions of next are vulnerable to  Dependency on Vulnerable Third-Party Component. The    
+          built-in Next.js Image Optimization API (`/_next/image`) passes attacker-supplied AVIF input to     
+          `sharp`, which decodes it with a version of `libheif` containing a heap buffer overflow in          
+          `scale_nearest_neighbor()` (GHSA-g89c-p67h-r497 / CVE-2026-84383). An unauthenticated attacker who  
+          can get the optimizer to fetch a crafted AVIF file — via any host allowed by                        
+          `images.remotePatterns`/`images.domains`, or via any same-origin route that returns user-supplied   
+          bytes — achieves remote code execution on the server. Note that `images.formats` is irrelevant: AVIF
+          *input* is decoded regardless of the configured output formats.                                     
+                                                                                                              
+           ▶▶┆ Fixed for next at versions: 15.5.24, 16.3.3
+          5650┆ "node_modules/next": {
+   
+   ❯❯❯❱ next - CVE-2026-75604
+          Severity: CRITICAL                                                                                  
+          Affected versions of next are vulnerable to Improper Limitation of a Pathname to a Restricted       
+          Directory ('Path Traversal'). Next.js does not escape literal backslashes in dynamic route segments 
+          before using them as incremental-cache keys (`escapePathDelimiters` handled the percent-encoded     
+          `%5c` but not a decoded `\`), and `FileSystemCache.getFilePath()` joined that key onto the cache    
+          root without a containment check. On a Windows filesystem, where `\` is a directory separator, an   
+          unauthenticated attacker can send `%5C`-encoded path segments that escape the `.next` cache         
+          directory and have arbitrary build artifacts returned in the response — including `server-reference-
+          manifest.json`, which holds the Server Action `encryptionKey`. With that key an attacker can forge  
+          an encrypted closure-bound Server Action payload and achieve remote code execution. Linux and macOS 
+          servers are unaffected because POSIX path resolution treats `\` as an ordinary filename character.  
+          There is no workaround; upgrade to 15.5.24 or 16.3.3.                                               
+                                                                                                              
+           ▶▶┆ Fixed for next at versions: 15.5.24, 16.3.3
+          5650┆ "node_modules/next": {
+   
+   ❯❯❱ sharp - GHSA-wq5f-xc86-pv6w
+          Severity: HIGH                                                                                     
+          Affected versions of sharp are vulnerable to Dependency on Vulnerable Third-Party Component / Use  
+          After Free. The prebuilt libvips binaries shipped with sharp bundle a vulnerable librsvg that has a
+          use-after-free when decoding SVG images, which can lead to remote code execution when sharp        
+          processes an attacker-supplied SVG. Upgrade to sharp 0.35.5 or later, or block SVG decoding with   
+          sharp.block({ operation: ["VipsForeignLoadSvg"] }).                                                
+                                                                                                             
+           ▶▶┆ Fixed for sharp at version: 0.35.5
+          6472┆ "node_modules/sharp": {
+                                         
+                                         
+┌───────────────────────────────────────┐
+│ 12 Undetermined Supply Chain Findings │
+└───────────────────────────────────────┘
+                              
+    frontend/package-lock.json
+    ❯❱ brace-expansion - CVE-2026-102277
+          Severity: MODERATE                                                                         
+          Affected versions of brace-expansion are vulnerable to Inefficient Algorithmic Complexity /
+          Uncontrolled Resource Consumption.                                                         
+                                                                                                     
+           ▶▶┆ Fixed for brace-expansion at versions: 1.1.21, 2.1.7, 3.0.9, 5.0.12
+          2112┆ "node_modules/@typescript-eslint/typescript-estree/node_modules/brace-expansion": {
+            ⋮┆----------------------------------------
+          2831┆ "node_modules/brace-expansion": {
+   
+    ❯❱ next - CVE-2026-94485
+          Severity: MODERATE                                                  
+          Affected versions of next are vulnerable to Origin Validation Error.
+                                                                              
+           ▶▶┆ Fixed for next at version: 16.3.8
+          5650┆ "node_modules/next": {
+   
+   ❯❯❱ next - CVE-2026-94482
+          Severity: HIGH                                                                                   
+          Affected versions of next are vulnerable to Allocation of Resources Without Limits or Throttling.
+                                                                                                           
+           ▶▶┆ Fixed for next at versions: 15.5.28, 16.4.1
+          5650┆ "node_modules/next": {
+   
+    ❯❱ next - CVE-2026-94543
+          Severity: MODERATE                                                                        
+          Affected versions of next are vulnerable to Use of Cache Containing Sensitive Information.
+                                                                                                    
+           ▶▶┆ Fixed for next at versions: 15.5.27, 16.3.8
+          5650┆ "node_modules/next": {
+   
+   ❯❯❯❱ next - GHSA-673q-mjm6-r5xr
+          Severity: CRITICAL                                                            
+          Affected versions of next are vulnerable to Deserialization of Untrusted Data.
+                                                                                        
+           ▶▶┆ Fixed for next at version: 16.4.1
+          5650┆ "node_modules/next": {
+   
+    ❯❱ next - CVE-2026-94544
+          Severity: MODERATE                                                                        
+          Affected versions of next are vulnerable to Use of Cache Containing Sensitive Information.
+                                                                                                    
+           ▶▶┆ Fixed for next at version: 16.3.8
+          5650┆ "node_modules/next": {
+   
+   ❯❯❯❱ next - GHSA-2464-fhr4-w9xw
+          Severity: CRITICAL                                                                         
+          Affected versions of next are vulnerable to Dependency on Vulnerable Third-Party Component.
+                                                                                                     
+           ▶▶┆ Fixed for next at versions: 15.5.28, 16.4.1
+          5650┆ "node_modules/next": {
+   
+    ❯❱ next - CVE-2026-103004
+          Severity: MODERATE                                                                        
+          Affected versions of next are vulnerable to Use of Cache Containing Sensitive Information.
+                                                                                                    
+           ▶▶┆ Fixed for next at version: 16.3.8
+          5650┆ "node_modules/next": {
+   
+     ❱ next - CVE-2026-94486
+          Severity: LOW                                                       
+          Affected versions of next are vulnerable to Origin Validation Error.
+                                                                              
+           ▶▶┆ Fixed for next at version: 16.3.8
+          5650┆ "node_modules/next": {
+   
+    ❯❱ next - CVE-2026-94484
+          Severity: MODERATE                                                                        
+          Affected versions of next are vulnerable to Use of Cache Containing Sensitive Information.
+                                                                                                    
+           ▶▶┆ Fixed for next at versions: 15.5.27, 16.3.8
+          5650┆ "node_modules/next": {
+   
+   ❯❯❱ zod - CVE-2023-54404
+          Severity: HIGH                                                                                  
+          Affected versions of zod are vulnerable to Allocation of Resources Without Limits or Throttling.
+                                                                                                          
+           ▶▶┆ Fixed for zod at version: 4.6.6
+          7468┆ "node_modules/zod": {
+                                       
+                                       
+┌─────────────────────────────────────┐
+│ 9 Unreachable Supply Chain Findings │
+└─────────────────────────────────────┘
+                              
+    frontend/package-lock.json
+   ❯❯❱ brace-expansion - CVE-2026-102276
+          Severity: HIGH                                                                                      
+          Affected versions of brace-expansion are vulnerable to Uncontrolled Recursion / Uncontrolled        
+          Resource Consumption. brace-expansion exposes a single expand() function, which parses every input  
+          with the internal parseCommaParts() helper. On affected versions parseCommaParts() recursed once per
+          brace group on the remainder of the string (about 7,300 nested groups exhaust the stack) and merged 
+          results with push.apply, which passes every array element as a separate stack argument (about       
+          124,300 comma-separated items overflow the stack even at recursion depth 1). Either vector throws an
+          uncaught RangeError that can terminate the Node.js process. The overflow happens while the pattern  
+          is being parsed, before expansion, so the max and maxLength options do not mitigate it. Any call to 
+          expand() on attacker-influenced input is affected, whether made directly or transitively through    
+          minimatch/glob. Upgrade to 1.1.19, 2.1.5, 3.0.7, or 5.0.10.                                         
+                                                                                                              
+           ▶▶┆ Fixed for brace-expansion at versions: 1.1.19, 2.1.5, 3.0.7, 5.0.10
+          2112┆ "node_modules/@typescript-eslint/typescript-estree/node_modules/brace-expansion": {
+   
+   ❯❯❱ brace-expansion - CVE-2026-102278
+          Severity: HIGH                                                                                    
+          Affected versions of brace-expansion are vulnerable to Uncontrolled Recursion / Uncontrolled      
+          Resource Consumption. brace-expansion exposes a single expand() function whose internal expansion 
+          routine recurses once per brace nesting level with no depth bound. A ~6 KB attacker-controlled    
+          string of deeply nested brace groups (e.g. "{".repeat(3200) + "a,b" + "}".repeat(3200)) passed to 
+          expand() (directly or transitively) exhausts the JavaScript call stack and crashes the process,   
+          causing a denial of service. The max and maxLength options do not mitigate this because the       
+          recursion happens before the result set grows; the maxDepth option that bounds nesting only exists
+          in patched versions.                                                                              
+                                                                                                            
+           ▶▶┆ Fixed for brace-expansion at versions: 1.1.20, 2.1.6, 3.0.8, 5.0.11
+          2112┆ "node_modules/@typescript-eslint/typescript-estree/node_modules/brace-expansion": {
+   
+   ❯❯❱ brace-expansion - CVE-2026-102276
+          Severity: HIGH                                                                                      
+          Affected versions of brace-expansion are vulnerable to Uncontrolled Recursion / Uncontrolled        
+          Resource Consumption. brace-expansion exposes a single expand() function, which parses every input  
+          with the internal parseCommaParts() helper. On affected versions parseCommaParts() recursed once per
+          brace group on the remainder of the string (about 7,300 nested groups exhaust the stack) and merged 
+          results with push.apply, which passes every array element as a separate stack argument (about       
+          124,300 comma-separated items overflow the stack even at recursion depth 1). Either vector throws an
+          uncaught RangeError that can terminate the Node.js process. The overflow happens while the pattern  
+          is being parsed, before expansion, so the max and maxLength options do not mitigate it. Any call to 
+          expand() on attacker-influenced input is affected, whether made directly or transitively through    
+          minimatch/glob. Upgrade to 1.1.19, 2.1.5, 3.0.7, or 5.0.10.                                         
+                                                                                                              
+           ▶▶┆ Fixed for brace-expansion at versions: 1.1.19, 2.1.5, 3.0.7, 5.0.10
+          2831┆ "node_modules/brace-expansion": {
+   
+   ❯❯❱ brace-expansion - CVE-2026-102278
+          Severity: HIGH                                                                                    
+          Affected versions of brace-expansion are vulnerable to Uncontrolled Recursion / Uncontrolled      
+          Resource Consumption. brace-expansion exposes a single expand() function whose internal expansion 
+          routine recurses once per brace nesting level with no depth bound. A ~6 KB attacker-controlled    
+          string of deeply nested brace groups (e.g. "{".repeat(3200) + "a,b" + "}".repeat(3200)) passed to 
+          expand() (directly or transitively) exhausts the JavaScript call stack and crashes the process,   
+          causing a denial of service. The max and maxLength options do not mitigate this because the       
+          recursion happens before the result set grows; the maxDepth option that bounds nesting only exists
+          in patched versions.                                                                              
+                                                                                                            
+           ▶▶┆ Fixed for brace-expansion at versions: 1.1.20, 2.1.6, 3.0.8, 5.0.11
+          2831┆ "node_modules/brace-expansion": {
+   
+   ❯❯❱ js-yaml - CVE-2026-84375
+          Severity: HIGH                                                                                      
+          Affected versions of js-yaml are vulnerable to Inefficient Algorithmic Complexity / Uncontrolled    
+          Resource Consumption. js-yaml is vulnerable to CPU exhaustion when parsing untrusted YAML: the      
+          `maxTotalMergeKeys` budget is only charged for keys that a merge (`<<`) source actually contributes,
+          so empty mappings cost nothing against the limit. A small document that merges a long sequence of   
+          empty mappings repeatedly forces O(N*K) work while the counter stays flat, stalling the process.    
+          Merge keys are part of the default schema for every load entrypoint (`load`, `loadAll`, and the 3.x 
+          `safeLoad`/`safeLoadAll`), and lowering `maxTotalMergeKeys` does not mitigate it.                   
+                                                                                                              
+           ▶▶┆ Fixed for js-yaml at versions: 3.15.2, 4.3.2
+          5068┆ "node_modules/js-yaml": {
+   
+   ❯❯❱ js-yaml - CVE-2026-84375
+          Severity: HIGH                                                                                      
+          Affected versions of js-yaml are vulnerable to Inefficient Algorithmic Complexity / Uncontrolled    
+          Resource Consumption. js-yaml is vulnerable to CPU exhaustion when parsing untrusted YAML: the      
+          `maxTotalMergeKeys` budget is only charged for keys that a merge (`<<`) source actually contributes,
+          so empty mappings cost nothing against the limit. A small document that merges a long sequence of   
+          empty mappings repeatedly forces O(N*K) work while the counter stays flat, stalling the process.    
+          Merge keys are part of the default schema for every load entrypoint (`load`, `loadAll`, and the 3.x 
+          `safeLoad`/`safeLoadAll`), and lowering `maxTotalMergeKeys` does not mitigate it.                   
+                                                                                                              
+           ▶▶┆ Fixed for js-yaml at versions: 3.15.2, 4.3.2
+          5068┆ "node_modules/js-yaml": {
+   
+   ❯❯❯❱ next - GHSA-vcvr-r3jv-pc5j
+          Severity: CRITICAL                                                                                  
+          Affected versions of next are vulnerable to Dependency on Vulnerable Third-Party Component /        
+          Improper Control of Generation of Code ('Code Injection') / Improper Encoding or Escaping of Output.
+          Satori, the JSX/CSS-to-SVG renderer behind the `ImageResponse` constructor exported from `next/og`, 
+          serialized element names, text children, attribute names, attribute values, and style values        
+          straight into the generated SVG without XML escaping or validation. In `src/handler/preprocess.ts`, 
+          `translateSVGNodeToSVGString()` returned text children as a bare `String(node)`, interpolated       
+          attributes as `` ` ${ATTRIBUTE_MAPPING[k] || k}="${_v}"` `` and styles as `` `${midline(k)}:${_v} ` 
+          ``, and emitted `<${type}>` without checking that `type` was a valid XML name; the data-URL symbol  
+          class also omitted `&`, so inner XML entities survived `encodeURIComponent` and were re-parsed by   
+          the outer SVG parser. A value that reaches SVG content, an SVG attribute, or a style can therefore  
+          close its syntactic context and inject arbitrary SVG markup, and on the Node.js rendering path that 
+          injected markup is escalated to remote code execution through upstream dependencies. Next.js 16.3.6 
+          fixes this by patching its vendored `@vercel/og@0.11.1` bundle with the hardened Satori serializer  
+          (`buildXMLString()`, `assertValidXMLName()`, `escapeXMLAttribute()`, `escapeXMLText()`) shipped     
+          upstream in satori 0.33.5 as GHSA-wx4j-mvgx-mqwp.                                                   
+                                                                                                              
+           ▶▶┆ Fixed for next at version: 16.3.6
+          5650┆ "node_modules/next": {
+   
+   ❯❯❱ sharp - GHSA-rgj7-g3m4-5g8c
+          Severity: HIGH                                                                                      
+          Affected versions of sharp are vulnerable to Divide By Zero / Heap-based Buffer Overflow / Out-of-  
+          bounds Read / Out-of-bounds Write. sharp bundles a vulnerable version of the native libheif library,
+          inheriting two critical memory-safety flaws in derived-item (`iden`) and auxiliary-item (`auxl`)    
+          handling: a heap buffer overflow in `scale_nearest_neighbor()` where duplicate alpha planes let a   
+          10/12-bit sample be written into an 8-bit plane allocation with an attacker-controlled overflow size
+          and contents (CVE-2026-84383), and a class of out-of-bounds reads and writes across roughly a dozen 
+          pixel-plane consumers that assume a `HeifPixelImage` logical geometry matching every channel plane  
+          it holds (GHSA-2jg2-4ch7-h545, for which a working code-execution exploit was confirmed). Decoding a
+          crafted AVIF or HEIF image can therefore corrupt the heap and lead to remote code execution. Because
+          sharp selects the libvips loader by sniffing the input bytes, no call site can be shown to be safe: 
+          `sharp(untrustedBuffer)` reaches the libheif loader exactly as `sharp("photo.avif")` does, and even 
+          a metadata-only `.metadata()` call parses the container. Upgrade to sharp 0.35.4 or later, which    
+          bundles libheif 1.23.2; if you rely on a globally-installed libvips, upgrade that libheif to 1.23.2.
+          Blocking the HEIF-family loader with `sharp.block({ operation: ["VipsForeignLoadHeif"] })` is the   
+          only workaround that prevents the vulnerable decode path from being reached; running a `node` binary
+          compiled as a Position Independent Executable merely blunts escalation to code execution and does   
+          not stop the heap corruption, and the official Node.js builds are not PIE. The heap corruption      
+          itself is platform-independent; the advisory documents escalation to remote code execution on glibc-
+          based Linux hosts running a non-PIE `node` binary, so a finding on macOS or musl still represents an
+          exploitable memory-safety bug.                                                                      
+                                                                                                              
+           ▶▶┆ Fixed for sharp at version: 0.35.4
+          6472┆ "node_modules/sharp": {
+   
+   ❯❯❱ source-map-js - CVE-2026-93749
+          Severity: HIGH                                                                                      
+          Affected versions of source-map-js are vulnerable to Improper Validation of Specified Quantity in   
+          Input. `SourceMapConsumer` does not validate the per-section `offset.line` value of indexed source  
+          maps (maps with a `sections` array). An attacker who controls a source map parsed by                
+          `SourceMapConsumer` can set a huge or infinite offset. Downstream processing such as                
+          `SourceNode.fromStringWithSourceMap(...)` or `SourceMapGenerator.fromSourceMap(...).toString()` then
+          blocks the event loop for a long time or crashes the process with `RangeError: Invalid array length`
+          (denial of service).                                                                                
+                                                                                                              
+           ▶▶┆ Fixed for source-map-js at version: 1.2.2
+          6715┆ "node_modules/source-map-js": {
+                                 
+                                 
+┌───────────────────────────────┐
+│ 22 Non-blocking Code Findings │
+└───────────────────────────────┘
+                                                             
+    backend/src/main/resources/db/migration/V2__demo_data.sql
+   ❯❯❱ generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
+          bcrypt hash detected        
+          Details: https://sg.run/3A8G
+                                      
+           10┆ ('facundo@playhub.test',  '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           11┆ ('santiago@playhub.test', '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           12┆ ('agostina@playhub.test', '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           13┆ ('agustin@playhub.test',  '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86');
+                     
+    db/02_inserts.sql
+   ❯❯❱ generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
+          bcrypt hash detected        
+          Details: https://sg.run/3A8G
+                                      
+           12┆ ('facundo@playhub.test',  '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           13┆ ('santiago@playhub.test', '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           14┆ ('agostina@playhub.test', '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           15┆ ('agustin@playhub.test',  '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86');
+                          
+    k8s/migration-job.yaml
+     ❱ yaml.kubernetes.security.run-as-non-root.run-as-non-root
+          When running containers in Kubernetes, it's important to ensure that they  are properly secured to  
+          prevent privilege escalation attacks.  One potential vulnerability is when a container is allowed to
+          run  applications as the root user, which could allow an attacker to gain  access to sensitive      
+          resources. To mitigate this risk, it's recommended to  add a `securityContext` to the container,    
+          with the parameter `runAsNonRoot`  set to `true`. This will ensure that the container runs as a non-
+          root user,  limiting the damage that could be caused by any potential attacks. By  adding a         
+          `securityContext` to the container in your Kubernetes pod, you can  help to ensure that your        
+          containerized applications are more secure and  less vulnerable to privilege escalation attacks.    
+          Details: https://sg.run/dgP5                                                                        
+                                                                                                              
+           ▶▶┆ Autofix ▶ spec: securityContext: runAsNonRoot: true #
+           16┆ spec:      securityContext:        runAsNonRoot: true #:
+   
+    ❯❱ yaml.kubernetes.security.allow-privilege-escalation-no-securitycontext.allow-privilege-escalation-no-
+       securitycontext                                                                                      
+          In Kubernetes, each pod runs in its own isolated environment with its own set of security policies. 
+          However, certain container images may contain `setuid` or `setgid` binaries that could allow an     
+          attacker to perform privilege escalation and gain access to sensitive resources. To mitigate this   
+          risk, it's recommended to add a `securityContext` to the container in the pod, with the parameter   
+          `allowPrivilegeEscalation` set to `false`. This will prevent the container from running any         
+          privileged processes and limit the impact of any potential attacks. By adding a `securityContext` to
+          your Kubernetes pod, you can help to ensure that your containerized applications are more secure and
+          less vulnerable to privilege escalation attacks.                                                    
+          Details: https://sg.run/eleR                                                                        
+                                                                                                              
+           ▶▶┆ Autofix ▶ securityContext: allowPrivilegeEscalation: false name
+           19┆ - securityContext:            allowPrivilegeEscalation: false          name: flyway
+                                        
+    k8s/monitoring/cadvisor-network.yaml
+     ❱ yaml.kubernetes.security.run-as-non-root.run-as-non-root
+          When running containers in Kubernetes, it's important to ensure that they  are properly secured to  
+          prevent privilege escalation attacks.  One potential vulnerability is when a container is allowed to
+          run  applications as the root user, which could allow an attacker to gain  access to sensitive      
+          resources. To mitigate this risk, it's recommended to  add a `securityContext` to the container,    
+          with the parameter `runAsNonRoot`  set to `true`. This will ensure that the container runs as a non-
+          root user,  limiting the damage that could be caused by any potential attacks. By  adding a         
+          `securityContext` to the container in your Kubernetes pod, you can  help to ensure that your        
+          containerized applications are more secure and  less vulnerable to privilege escalation attacks.    
+          Details: https://sg.run/dgP5                                                                        
+                                                                                                              
+           ▶▶┆ Autofix ▶ spec: securityContext: runAsNonRoot: true #
+           15┆ spec:      securityContext:        runAsNonRoot: true #:
+   
+    ❯❱ yaml.kubernetes.security.hostpid-pod.hostpid-pod
+          Pod is sharing the host process ID namespace. When paired with ptrace this can be used to escalate
+          privileges outside of the container. Remove the 'hostPID' key to disable this functionality.      
+          Details: https://sg.run/708R                                                                      
+                                                                                                            
+           17┆ hostPID: true
+   
+    ❯❱ yaml.kubernetes.security.allow-privilege-escalation.allow-privilege-escalation
+          In Kubernetes, each pod runs in its own isolated environment with its own set of security policies. 
+          However, certain container images may contain `setuid` or `setgid` binaries that could allow an     
+          attacker to perform privilege escalation and gain access to sensitive resources. To mitigate this   
+          risk, it's recommended to add a `securityContext` to the container in the pod, with the parameter   
+          `allowPrivilegeEscalation` set to `false`. This will prevent the container from running any         
+          privileged processes and limit the impact of any potential attacks. By adding the                   
+          `allowPrivilegeEscalation` parameter to your the `securityContext`, you can help to ensure that your
+          containerized applications are more secure and less vulnerable to privilege escalation attacks.     
+          Details: https://sg.run/ljp6                                                                        
+                                                                                                              
+           ▶▶┆ Autofix ▶ securityContext: allowPrivilegeEscalation: false #
+           48┆ securityContext:            allowPrivilegeEscalation: false #:
+   
+    ❯❱ yaml.kubernetes.security.privileged-container.privileged-container
+          Container or pod is running in privileged mode. This grants the container the equivalent of root
+          capabilities on the host machine. This can lead to container escapes, privilege escalation, and 
+          other security concerns. Remove the 'privileged' key to disable this capability.                
+          Details: https://sg.run/Ygr5                                                                    
+                                                                                                          
+           50┆ privileged: true
+                               
+    k8s/monitoring/grafana.yaml
+    ❯❱ yaml.kubernetes.security.allow-privilege-escalation-no-securitycontext.allow-privilege-escalation-no-
+       securitycontext                                                                                      
+          In Kubernetes, each pod runs in its own isolated environment with its own set of security policies. 
+          However, certain container images may contain `setuid` or `setgid` binaries that could allow an     
+          attacker to perform privilege escalation and gain access to sensitive resources. To mitigate this   
+          risk, it's recommended to add a `securityContext` to the container in the pod, with the parameter   
+          `allowPrivilegeEscalation` set to `false`. This will prevent the container from running any         
+          privileged processes and limit the impact of any potential attacks. By adding a `securityContext` to
+          your Kubernetes pod, you can help to ensure that your containerized applications are more secure and
+          less vulnerable to privilege escalation attacks.                                                    
+          Details: https://sg.run/eleR                                                                        
+                                                                                                              
+           ▶▶┆ Autofix ▶ securityContext: allowPrivilegeEscalation: false name
+           37┆ - securityContext:            allowPrivilegeEscalation: false          name: grafana
+                                     
+    k8s/monitoring/node-exporter.yaml
+    ❯❱ yaml.kubernetes.security.hostnetwork-pod.hostnetwork-pod
+          Pod may use the node network namespace. This gives the pod access to the loopback device, services
+          listening on localhost, and could be used to snoop on network activity of other pods on the same  
+          node. Remove the 'hostNetwork' key to disable this functionality.                                 
+          Details: https://sg.run/E51A                                                                      
+                                                                                                            
+           17┆ hostNetwork: true
+   
+    ❯❱ yaml.kubernetes.security.hostpid-pod.hostpid-pod
+          Pod is sharing the host process ID namespace. When paired with ptrace this can be used to escalate
+          privileges outside of the container. Remove the 'hostPID' key to disable this functionality.      
+          Details: https://sg.run/708R                                                                      
+                                                                                                            
+           18┆ hostPID: true
+                                  
+    k8s/monitoring/prometheus.yaml
+    ❯❱ yaml.kubernetes.security.allow-privilege-escalation-no-securitycontext.allow-privilege-escalation-no-
+       securitycontext                                                                                      
+          In Kubernetes, each pod runs in its own isolated environment with its own set of security policies. 
+          However, certain container images may contain `setuid` or `setgid` binaries that could allow an     
+          attacker to perform privilege escalation and gain access to sensitive resources. To mitigate this   
+          risk, it's recommended to add a `securityContext` to the container in the pod, with the parameter   
+          `allowPrivilegeEscalation` set to `false`. This will prevent the container from running any         
+          privileged processes and limit the impact of any potential attacks. By adding a `securityContext` to
+          your Kubernetes pod, you can help to ensure that your containerized applications are more secure and
+          less vulnerable to privilege escalation attacks.                                                    
+          Details: https://sg.run/eleR                                                                        
+                                                                                                              
+           ▶▶┆ Autofix ▶ securityContext: allowPrivilegeEscalation: false name
+          227┆ - securityContext:            allowPrivilegeEscalation: false          name: prometheus
+                                
+    k8s/postgres-deployment.yaml
+     ❱ yaml.kubernetes.security.run-as-non-root.run-as-non-root
+          When running containers in Kubernetes, it's important to ensure that they  are properly secured to  
+          prevent privilege escalation attacks.  One potential vulnerability is when a container is allowed to
+          run  applications as the root user, which could allow an attacker to gain  access to sensitive      
+          resources. To mitigate this risk, it's recommended to  add a `securityContext` to the container,    
+          with the parameter `runAsNonRoot`  set to `true`. This will ensure that the container runs as a non-
+          root user,  limiting the damage that could be caused by any potential attacks. By  adding a         
+          `securityContext` to the container in your Kubernetes pod, you can  help to ensure that your        
+          containerized applications are more secure and  less vulnerable to privilege escalation attacks.    
+          Details: https://sg.run/dgP5                                                                        
+                                                                                                              
+           ▶▶┆ Autofix ▶ spec: securityContext: runAsNonRoot: true #
+           18┆ spec:      securityContext:        runAsNonRoot: true #:
+   
+    ❯❱ yaml.kubernetes.security.allow-privilege-escalation-no-securitycontext.allow-privilege-escalation-no-
+       securitycontext                                                                                      
+          In Kubernetes, each pod runs in its own isolated environment with its own set of security policies. 
+          However, certain container images may contain `setuid` or `setgid` binaries that could allow an     
+          attacker to perform privilege escalation and gain access to sensitive resources. To mitigate this   
+          risk, it's recommended to add a `securityContext` to the container in the pod, with the parameter   
+          `allowPrivilegeEscalation` set to `false`. This will prevent the container from running any         
+          privileged processes and limit the impact of any potential attacks. By adding a `securityContext` to
+          your Kubernetes pod, you can help to ensure that your containerized applications are more secure and
+          less vulnerable to privilege escalation attacks.                                                    
+          Details: https://sg.run/eleR                                                                        
+                                                                                                              
+           ▶▶┆ Autofix ▶ securityContext: allowPrivilegeEscalation: false name
+           21┆ - securityContext:            allowPrivilegeEscalation: false          name: postgres
+                              
+    scripts/flyway-repair.yaml
+     ❱ yaml.kubernetes.security.run-as-non-root.run-as-non-root
+          When running containers in Kubernetes, it's important to ensure that they  are properly secured to  
+          prevent privilege escalation attacks.  One potential vulnerability is when a container is allowed to
+          run  applications as the root user, which could allow an attacker to gain  access to sensitive      
+          resources. To mitigate this risk, it's recommended to  add a `securityContext` to the container,    
+          with the parameter `runAsNonRoot`  set to `true`. This will ensure that the container runs as a non-
+          root user,  limiting the damage that could be caused by any potential attacks. By  adding a         
+          `securityContext` to the container in your Kubernetes pod, you can  help to ensure that your        
+          containerized applications are more secure and  less vulnerable to privilege escalation attacks.    
+          Details: https://sg.run/dgP5                                                                        
+                                                                                                              
+           ▶▶┆ Autofix ▶ spec: securityContext: runAsNonRoot: true #
+           10┆ spec:      securityContext:        runAsNonRoot: true #:
+   
+    ❯❱ yaml.kubernetes.security.allow-privilege-escalation-no-securitycontext.allow-privilege-escalation-no-
+       securitycontext                                                                                      
+          In Kubernetes, each pod runs in its own isolated environment with its own set of security policies. 
+          However, certain container images may contain `setuid` or `setgid` binaries that could allow an     
+          attacker to perform privilege escalation and gain access to sensitive resources. To mitigate this   
+          risk, it's recommended to add a `securityContext` to the container in the pod, with the parameter   
+          `allowPrivilegeEscalation` set to `false`. This will prevent the container from running any         
+          privileged processes and limit the impact of any potential attacks. By adding a `securityContext` to
+          your Kubernetes pod, you can help to ensure that your containerized applications are more secure and
+          less vulnerable to privilege escalation attacks.                                                    
+          Details: https://sg.run/eleR                                                                        
+                                                                                                              
+           ▶▶┆ Autofix ▶ securityContext: allowPrivilegeEscalation: false name
+           13┆ - securityContext:            allowPrivilegeEscalation: false          name: flyway
+
+                
+                
+┌──────────────┐
+│ Scan Summary │
+└──────────────┘
+✅ CI scan completed successfully.
+ • Findings: 49 (0 blocking)
+ • Rules run: 143072
+ • Targets scanned: 202
+ • Parsed lines: ~99.9%
+ • Scan skipped: 
+   ◦ Matching --exclude patterns: 5
+   ◦ Files matching .semgrepignore patterns: 13
+ • Scan was limited to files tracked by git
+ • For a detailed list of skipped files and lines, run semgrep with the --verbose flag
+CI scan completed successfully.
+  View results in Semgrep Cloud Platform:
+    https://semgrep.dev/orgs/agustingarciaa/findings?repo=local_scan/src&ref=main
+    https://semgrep.dev/orgs/agustingarciaa/supply-chain/vulnerabilities?repo=local_scan/src&ref=main
+  No blocking findings so exiting with code 0
