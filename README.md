@@ -1,4 +1,4 @@
-# PlayHub - DevOps Entregable 2
+# PlayHub - DevOps Entregable 2 y 3
 
 Proyecto académico de una tienda de videojuegos, con backend en Spring Boot, frontend en Next.js y base de datos PostgreSQL.
 
