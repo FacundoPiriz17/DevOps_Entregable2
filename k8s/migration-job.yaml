@@ -23,6 +23,8 @@ spec:
         - name: flyway
           image: redgate/flyway:13.4
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
           args:
             - migrate
           env:

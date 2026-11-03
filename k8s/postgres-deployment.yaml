@@ -26,6 +26,8 @@ spec:
         - name: postgres
           image: postgres:18-alpine
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
           ports:
             - name: postgres
               containerPort: 5432

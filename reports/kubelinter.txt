@@ -1,5 +1,5 @@
 Analisis estatico de manifiestos Kubernetes
-Fecha UTC: 2026-11-02T20:27:02Z
+Fecha UTC: 2026-11-03T21:38:13Z
 Herramienta: stackrox/kube-linter:v0.8.3
 Comando: kube-linter lint k8s scripts/flyway-repair.yaml
 Alcance: manifiestos de despliegue, monitoreo y politicas; tests/kyverno contiene fixtures intencionalmente invalidos y se analiza por separado con Kyverno.
@@ -33,7 +33,6 @@ KubeLinter 0.8.3
 
 /work/k8s/monitoring/cadvisor-network.yaml: (object: <no namespace>/playhub-cadvisor-network apps/v1, Kind=DaemonSet) host system directory "/" is mounted on container "cadvisor" (check: sensitive-host-mounts, remediation: Ensure sensitive host system directories are not mounted in containers by removing those Volumes and VolumeMounts.)
 
-Error: found 21 lint errors
 /work/k8s/monitoring/cadvisor-network.yaml: (object: <no namespace>/playhub-cadvisor-network apps/v1, Kind=DaemonSet) host system directory "/sys" is mounted on container "cadvisor" (check: sensitive-host-mounts, remediation: Ensure sensitive host system directories are not mounted in containers by removing those Volumes and VolumeMounts.)
 
 /work/k8s/monitoring/grafana.yaml: (object: <no namespace>/playhub-grafana apps/v1, Kind=Deployment) container "grafana" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
@@ -50,5 +49,6 @@ Error: found 21 lint errors
 
 /work/scripts/flyway-repair.yaml: (object: <no namespace>/playhub-migrations-repair batch/v1, Kind=Job) container "flyway" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
 
+Error: found 21 lint errors
 
 Exit code: 1

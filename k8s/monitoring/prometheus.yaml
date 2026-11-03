@@ -228,6 +228,8 @@ spec:
         - name: prometheus
           image: prom/prometheus:v3.15.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
           ports:
             - name: http
               containerPort: 9090

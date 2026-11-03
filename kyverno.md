@@ -86,6 +86,12 @@ conserva 472 y Prometheus 65534. Los demás exporters ya declaraban ejecución
 sin root. El Job manual `scripts/flyway-repair.yaml` también recibió contexto
 sin root y requests/limits.
 
+Los contenedores de PostgreSQL, Grafana, Prometheus y ambos Jobs de Flyway
+declaran `securityContext.allowPrivilegeEscalation: false`. Esto corrige los
+cinco hallazgos de Semgrep por escalada de privilegios sin restringir en estos
+manifiestos. Se conservan las excepciones de cAdvisor y node-exporter para
+mantener la recolección actual de métricas del nodo.
+
 En esta política se deshabilita la generación automática para controladores.
 Se valida el **Pod creado por el controlador**, lo que permite identificar
 exactamente la excepción de infraestructura siguiente. Por eso un Deployment
@@ -229,3 +235,20 @@ La ejecución registra **21 hallazgos** y **exit code 1**.
 
 Estos hallazgos quedan documentados y visibles; la entrega no afirma que todos
 los checks de KubeLinter estén resueltos.
+
+## Contraste con el reporte de Semgrep
+
+`reports/semgrep_scan.txt` conserva el escaneo original. Después de restringir
+la escalada de privilegios en los cinco contenedores indicados arriba, se
+ejecutó Semgrep 1.182.1 con el conjunto `p/kubernetes` sobre `k8s/` y
+`scripts/flyway-repair.yaml`. La salida completa, sin filtros, se guarda en
+`reports/semgrep-kubernetes.txt`.
+
+El nuevo análisis registra 16 hallazgos: seis corresponden a las excepciones
+conservadas de cAdvisor y node-exporter, y diez a filesystems raíz escribibles.
+Estos últimos ya aparecían en KubeLinter, pero no en el reporte original de
+Semgrep, que utilizó otro conjunto de reglas. Los cinco hallazgos originales
+por falta de `allowPrivilegeEscalation: false` en Flyway, PostgreSQL, Grafana y
+Prometheus ya no aparecen. El análisis sigue teniendo hallazgos pendientes;
+su código de salida 0 indica que terminó, no que los manifiestos estén libres
+de problemas.

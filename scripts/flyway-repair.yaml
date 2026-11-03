@@ -16,6 +16,8 @@ spec:
       containers:
         - name: flyway
           image: redgate/flyway:13.4
+          securityContext:
+            allowPrivilegeEscalation: false
           args: ["repair"]
           resources:
             requests:
