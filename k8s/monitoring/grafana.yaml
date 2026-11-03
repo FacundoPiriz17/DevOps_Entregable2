@@ -30,6 +30,7 @@ spec:
         app: playhub-grafana
     spec:
       securityContext:
+        runAsNonRoot: true
         runAsUser: 472
         runAsGroup: 472
         fsGroup: 472

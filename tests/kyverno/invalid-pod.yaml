@@ -1,0 +1,15 @@
+# Intencionalmente invalido. Mantener fuera de k8s/ y del analisis normal.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kyverno-invalid
+  namespace: kyverno-validation
+spec:
+  restartPolicy: Never
+  containers:
+    - name: demo
+      image: busybox:latest
+      command: ["sleep", "3600"]
+      securityContext:
+        runAsNonRoot: false
+        runAsUser: 0

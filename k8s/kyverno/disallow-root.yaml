@@ -1,0 +1,50 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-root
+  annotations:
+    policies.kyverno.io/title: Impedir ejecucion como root
+    policies.kyverno.io/category: DevSecOps
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/severity: high
+    # Se valida cada Pod real para acotar la excepcion de cAdvisor a su owner.
+    pod-policies.kyverno.io/autogen-controllers: none
+spec:
+  background: true
+  rules:
+    - name: require-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+      preconditions:
+        all:
+          # Excepcion aprobada: solo Pods del DaemonSet existente en default.
+          # Un label por si solo no desactiva esta politica.
+          - key: "{{ request.object.metadata.namespace || 'default' }}:{{ request.object.metadata.ownerReferences[?kind == 'DaemonSet' && controller == `true`].name | [0] || '' }}:{{ request.object.metadata.labels.app || '' }}"
+            operator: NotEquals
+            value: "default:playhub-cadvisor-network:playhub-cadvisor-network"
+      validate:
+        failureAction: Enforce
+        allowExistingViolations: false
+        message: "Exigir runAsNonRoot=true y prohibir runAsUser=0, incluyendo initContainers y ephemeralContainers."
+        foreach:
+          - list: "request.object.spec.[containers, initContainers, ephemeralContainers][]"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ not_null(element.securityContext.runAsNonRoot, request.object.spec.securityContext.runAsNonRoot, `false`) }}"
+                    operator: NotEquals
+                    value: true
+                  - key: "{{ not_null(element.securityContext.runAsUser, request.object.spec.securityContext.runAsUser, `-1`) }}"
+                    operator: Equals
+                    value: 0

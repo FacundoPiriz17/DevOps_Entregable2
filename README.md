@@ -21,6 +21,8 @@ El proyecto incluye scripts para automatizar el despliegue, cambio de slot y lim
 
 Incluye **Prometheus** y **Grafana**, con recolección de recursos y dashboards automáticos para Kubernetes: CPU, RAM, disco, red y throughput de I/O, tanto de nodos como de workloads Blue/Green, además de contadores del backend. Docker Compose conserva los servicios base. Ver [instrucciones de uso](monitoring/README.md).
 
+La seguridad de Kubernetes del entregable 3 se documenta en [kyverno.md](kyverno.md): tres políticas Kyverno en modo Enforce, pruebas de admisión e informe de KubeLinter en `reports/kubelinter.txt`.
+
 ---
 
 ## Arquitectura
@@ -1181,3 +1183,35 @@ Linux/macOS:
 ```bash
 ./scripts/cleanup.sh
 ```
+
+### Seguridad en Kubernetes del entregable 3
+
+Para levantar PlayHub se puede utilizar el despliegue habitual. Para desplegar
+la aplicación con las tres políticas de seguridad activas, primero se debe
+instalar Kyverno, una vez por clúster.
+
+| Script | Función | Cuándo ejecutarlo |
+|---|---|---|
+| `scripts/install-kyverno.ps1` | Instala Kyverno y aplica las tres políticas. | Al preparar un clúster nuevo, antes de desplegar la app. |
+| `scripts/validate-kyverno.ps1` | Prueba la aceptación y el rechazo de manifiestos y guarda `reports/kyverno-validation.txt`. | Después de instalar o modificar las políticas, o para demostrar el entregable. |
+| `scripts/lint-kubernetes.ps1` | Analiza los manifiestos con KubeLinter y guarda `reports/kubelinter.txt`. | Después de modificar los YAML y antes de entregar o desplegar. |
+
+Para que el profesor o un integrante del equipo reproduzca esta parte, con
+Docker y Minikube funcionando, ejecutar desde la raíz del repositorio en
+PowerShell:
+
+```powershell
+.\scripts\install-kyverno.ps1
+.\scripts\deploy.ps1 -ClusterType minikube -DeployGreen
+.\scripts\validate-kyverno.ps1
+.\scripts\lint-kubernetes.ps1
+```
+
+Los scripts de validación y análisis generan la evidencia; no son requisitos
+para arrancar la app. KubeLinter puede ejecutarse con Docker sin un clúster
+activo. Cada ejecución reemplaza el reporte correspondiente.
+
+`deploy.ps1` y `deploy.sh` no ejecutan automáticamente estos scripts de
+seguridad. Una vez instalado Kyverno, las políticas se aplican automáticamente
+a los siguientes despliegues, sin repetir la instalación en cada arranque.
+ver más en [kyverno.md](kyverno.md)

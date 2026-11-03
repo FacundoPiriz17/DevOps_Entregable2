@@ -15,6 +15,10 @@ spec:
         app: playhub-migrations
     spec:
       restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
       containers:
         - name: flyway
           image: redgate/flyway:13.4
