@@ -1,0 +1,908 @@
+Validacion de admision Kyverno
+Fecha UTC: 2026-11-02T20:28:44Z
+kubectl config current-context
+minikube
+Exit code: 0
+kubectl get deployments -n kyverno -o custom-columns=NAME:.metadata.name,IMAGE:.spec.template.spec.containers[0].image
+NAME                            IMAGE
+kyverno-admission-controller    reg.kyverno.io/kyverno/kyverno:v1.19.2
+kyverno-background-controller   reg.kyverno.io/kyverno/background-controller:v1.19.2
+kyverno-cleanup-controller      reg.kyverno.io/kyverno/cleanup-controller:v1.19.2
+kyverno-reports-controller      reg.kyverno.io/kyverno/reports-controller:v1.19.2
+Exit code: 0
+kubectl wait --for=condition=Ready clusterpolicy/disallow-latest --timeout=120s
+Warning: kyverno.io/v1 ClusterPolicy is deprecated and will be removed in a future release; migrate to ValidatingPolicy, MutatingPolicy, GeneratingPolicy or ImageValidatingPolicy (policies.kyverno.io), see https://kyverno.io/docs/guides/migration-to-cel/
+clusterpolicy.kyverno.io/disallow-latest condition met
+Exit code: 0
+kubectl wait --for=condition=Ready clusterpolicy/require-resources --timeout=120s
+Warning: kyverno.io/v1 ClusterPolicy is deprecated and will be removed in a future release; migrate to ValidatingPolicy, MutatingPolicy, GeneratingPolicy or ImageValidatingPolicy (policies.kyverno.io), see https://kyverno.io/docs/guides/migration-to-cel/
+clusterpolicy.kyverno.io/require-resources condition met
+Exit code: 0
+kubectl wait --for=condition=Ready clusterpolicy/disallow-root --timeout=120s
+Warning: kyverno.io/v1 ClusterPolicy is deprecated and will be removed in a future release; migrate to ValidatingPolicy, MutatingPolicy, GeneratingPolicy or ImageValidatingPolicy (policies.kyverno.io), see https://kyverno.io/docs/guides/migration-to-cel/
+clusterpolicy.kyverno.io/disallow-root condition met
+Exit code: 0
+kubectl get namespace kyverno-validation --ignore-not-found -o name
+namespace/kyverno-validation
+Exit code: 0
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\tests\kyverno\valid-pod.yaml -o json
+{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "labels": {
+            "app": "kyverno-validation"
+        },
+        "name": "kyverno-valid",
+        "namespace": "kyverno-validation"
+    },
+    "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+            {
+                "command": [
+                    "sh",
+                    "-c",
+                    "id; sleep 3600"
+                ],
+                "image": "busybox:1.37.0",
+                "name": "demo",
+                "resources": {
+                    "limits": {
+                        "cpu": "100m",
+                        "memory": "32Mi"
+                    },
+                    "requests": {
+                        "cpu": "10m",
+                        "memory": "8Mi"
+                    }
+                },
+                "securityContext": {
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                        "drop": [
+                            "ALL"
+                        ]
+                    }
+                }
+            }
+        ],
+        "restartPolicy": "Never",
+        "securityContext": {
+            "runAsGroup": 1000,
+            "runAsNonRoot": true,
+            "runAsUser": 1000,
+            "seccompProfile": {
+                "type": "RuntimeDefault"
+            }
+        }
+    }
+}
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/kyverno-valid-dry-run created (server dry run)
+Exit code: 0
+PASS: valid-dry-run aceptado.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-latest was blocked due to the following policies 
+
+disallow-latest:
+  require-explicit-image-version: 'validation failure: Usar una etiqueta explicita distinta de latest o un digest; tambien se revisan initContainers y ephemeralContainers.'
+Exit code: 1
+PASS: latest rechazado por disallow-latest.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-implicit-latest was blocked due to the following policies 
+
+disallow-latest:
+  require-explicit-image-version: 'validation failure: Usar una etiqueta explicita distinta de latest o un digest; tambien se revisan initContainers y ephemeralContainers.'
+Exit code: 1
+PASS: implicit-latest rechazado por disallow-latest.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-registry-port-no-tag was blocked due to the following policies 
+
+disallow-latest:
+  require-explicit-image-version: 'validation failure: Usar una etiqueta explicita distinta de latest o un digest; tambien se revisan initContainers y ephemeralContainers.'
+Exit code: 1
+PASS: registry-port-no-tag rechazado por disallow-latest.
+kubectl create --dry-run=server -f -
+pod/kyverno-digest created (server dry run)
+Exit code: 0
+PASS: digest aceptado.
+kubectl create --dry-run=server -f -
+pod/kyverno-container-nonroot created (server dry run)
+Exit code: 0
+PASS: container-nonroot aceptado.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-no-resources was blocked due to the following policies 
+
+require-resources:
+  require-cpu-memory: 'validation failure: validation error: Cada contenedor e initContainer debe declarar requests y limits positivos de CPU y memoria. rule require-cpu-memory failed at path /resources/limits/'
+Exit code: 1
+PASS: no-resources rechazado por require-resources.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-no-memory-limit was blocked due to the following policies 
+
+require-resources:
+  require-cpu-memory: 'validation failure: validation error: Cada contenedor e initContainer debe declarar requests y limits positivos de CPU y memoria. rule require-cpu-memory failed at path /resources/limits/memory/'
+Exit code: 1
+PASS: no-memory-limit rechazado por require-resources.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-no-cpu-limit was blocked due to the following policies 
+
+require-resources:
+  require-cpu-memory: 'validation failure: validation error: Cada contenedor e initContainer debe declarar requests y limits positivos de CPU y memoria. rule require-cpu-memory failed at path /resources/limits/cpu/'
+Exit code: 1
+PASS: no-cpu-limit rechazado por require-resources.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-zero-resources was blocked due to the following policies 
+
+require-resources:
+  require-cpu-memory: 'validation failure: validation error: Cada contenedor e initContainer debe declarar requests y limits positivos de CPU y memoria. rule require-cpu-memory failed at path /resources/limits/cpu/'
+Exit code: 1
+PASS: zero-resources rechazado por require-resources.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-root-uid was blocked due to the following policies 
+
+disallow-root:
+  require-non-root: 'validation failure: Exigir runAsNonRoot=true y prohibir runAsUser=0, incluyendo initContainers y ephemeralContainers.'
+Exit code: 1
+PASS: root-uid rechazado por disallow-root.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-root-override was blocked due to the following policies 
+
+disallow-root:
+  require-non-root: 'validation failure: Exigir runAsNonRoot=true y prohibir runAsUser=0, incluyendo initContainers y ephemeralContainers.'
+Exit code: 1
+PASS: root-override rechazado por disallow-root.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-missing-nonroot was blocked due to the following policies 
+
+disallow-root:
+  require-non-root: 'validation failure: Exigir runAsNonRoot=true y prohibir runAsUser=0, incluyendo initContainers y ephemeralContainers.'
+Exit code: 1
+PASS: missing-nonroot rechazado por disallow-root.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-fake-cadvisor-label was blocked due to the following policies 
+
+disallow-root:
+  require-non-root: 'validation failure: Exigir runAsNonRoot=true y prohibir runAsUser=0, incluyendo initContainers y ephemeralContainers.'
+Exit code: 1
+PASS: fake-cadvisor-label rechazado por disallow-root.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-second-container was blocked due to the following policies 
+
+require-resources:
+  require-cpu-memory: 'validation failure: validation error: Cada contenedor e initContainer debe declarar requests y limits positivos de CPU y memoria. rule require-cpu-memory failed at path /resources/limits/'
+Exit code: 1
+PASS: second-container rechazado por require-resources.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-init-latest was blocked due to the following policies 
+
+disallow-latest:
+  require-explicit-image-version: 'validation failure: Usar una etiqueta explicita distinta de latest o un digest; tambien se revisan initContainers y ephemeralContainers.'
+Exit code: 1
+PASS: init-latest rechazado por disallow-latest.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-init-resources was blocked due to the following policies 
+
+require-resources:
+  require-cpu-memory: 'validation failure: validation error: Cada contenedor e initContainer debe declarar requests y limits positivos de CPU y memoria. rule require-cpu-memory failed at path /resources/limits/'
+Exit code: 1
+PASS: init-resources rechazado por require-resources.
+kubectl create --dry-run=server -f -
+Error from server: error when creating "STDIN": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-init-root was blocked due to the following policies 
+
+disallow-root:
+  require-non-root: 'validation failure: Exigir runAsNonRoot=true y prohibir runAsUser=0, incluyendo initContainers y ephemeralContainers.'
+Exit code: 1
+PASS: init-root rechazado por disallow-root.
+Pod templates: se usa ServiceAccount default para probar las politicas sin desplegar el RBAC de PlayHub. No se comprueba el arranque de estos servicios.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\backend-blue-deployment.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-backend-blue created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-backend-blue aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\backend-green-deployment.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-backend-green created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-backend-green aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\backend-service.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\configmap.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\frontend-blue-deployment.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-frontend-blue created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-frontend-blue aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\frontend-green-deployment.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-frontend-green created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-frontend-green aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\frontend-service.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\migration-job.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-migrations created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-migrations aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\postgres-deployment.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-postgres created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-postgres aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\postgres-pvc.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\postgres-service.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\monitoring\blackbox-exporter.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-blackbox-exporter created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-blackbox-exporter aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\monitoring\cadvisor-network.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-cadvisor-network created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-cadvisor-network aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\monitoring\grafana-alerts.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\monitoring\grafana-config.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\monitoring\grafana.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-grafana created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-grafana aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\monitoring\kube-state-metrics.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-kube-state-metrics created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-kube-state-metrics aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\monitoring\node-exporter.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-node-exporter created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-node-exporter aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\monitoring\prometheus.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-prometheus created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-prometheus aceptado.
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\k8s\monitoring\rbac.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=client -f C:\devops\DevOps_Entregable2\scripts\flyway-repair.yaml -o json
+JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.
+Exit code: 0
+kubectl create --dry-run=server -f -
+pod/admission-playhub-migrations-repair created (server dry run)
+Exit code: 0
+PASS: Pod template playhub-migrations-repair aceptado.
+kubectl create -f C:\devops\DevOps_Entregable2\tests\kyverno\invalid-pod.yaml
+Error from server: error when creating "C:\\devops\\DevOps_Entregable2\\tests\\kyverno\\invalid-pod.yaml": admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-invalid was blocked due to the following policies 
+
+disallow-latest:
+  require-explicit-image-version: 'validation failure: Usar una etiqueta explicita distinta de latest o un digest; tambien se revisan initContainers y ephemeralContainers.'
+disallow-root:
+  require-non-root: 'validation failure: Exigir runAsNonRoot=true y prohibir runAsUser=0, incluyendo initContainers y ephemeralContainers.'
+require-resources:
+  require-cpu-memory: 'validation failure: validation error: Cada contenedor e initContainer debe declarar requests y limits positivos de CPU y memoria. rule require-cpu-memory failed at path /resources/limits/'
+Exit code: 1
+PASS: invalid-pod.yaml (creacion real) rechazado por disallow-latest, require-resources, disallow-root.
+kubectl get pod kyverno-invalid -n kyverno-validation --ignore-not-found -o name
+
+Exit code: 0
+kubectl create -f C:\devops\DevOps_Entregable2\tests\kyverno\valid-pod.yaml
+pod/kyverno-valid created
+Exit code: 0
+PASS: valid-pod.yaml (creacion real) aceptado.
+kubectl wait -n kyverno-validation --for=condition=Ready pod/kyverno-valid --timeout=120s
+pod/kyverno-valid condition met
+Exit code: 0
+PASS: Pod valido Running/Ready aceptado.
+kubectl exec -n kyverno-validation kyverno-valid -- id -u
+1000
+Exit code: 0
+PASS: el proceso del Pod valido ejecuta con UID 1000.
+kubectl get pod kyverno-valid -n kyverno-validation -o json
+{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "creationTimestamp": "2026-11-02T20:28:58Z",
+        "generation": 1,
+        "labels": {
+            "app": "kyverno-validation"
+        },
+        "name": "kyverno-valid",
+        "namespace": "kyverno-validation",
+        "resourceVersion": "604127",
+        "uid": "0d0fcb8d-e122-4a23-84c0-370ad97cae6b"
+    },
+    "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+            {
+                "command": [
+                    "sh",
+                    "-c",
+                    "id; sleep 3600"
+                ],
+                "image": "busybox:1.37.0",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "demo",
+                "resources": {
+                    "limits": {
+                        "cpu": "100m",
+                        "memory": "32Mi"
+                    },
+                    "requests": {
+                        "cpu": "10m",
+                        "memory": "8Mi"
+                    }
+                },
+                "securityContext": {
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                        "drop": [
+                            "ALL"
+                        ]
+                    }
+                },
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File"
+            }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "enableServiceLinks": true,
+        "nodeName": "minikube",
+        "preemptionPolicy": "PreemptLowerPriority",
+        "priority": 0,
+        "restartPolicy": "Never",
+        "schedulerName": "default-scheduler",
+        "securityContext": {
+            "runAsGroup": 1000,
+            "runAsNonRoot": true,
+            "runAsUser": 1000,
+            "seccompProfile": {
+                "type": "RuntimeDefault"
+            }
+        },
+        "serviceAccount": "default",
+        "serviceAccountName": "default",
+        "terminationGracePeriodSeconds": 30,
+        "tolerations": [
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/not-ready",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            },
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/unreachable",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            }
+        ]
+    },
+    "status": {
+        "conditions": [
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:29:00Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "PodReadyToStartContainers"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:28:58Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "Initialized"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:29:00Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "Ready"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:29:00Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "ContainersReady"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:28:58Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "PodScheduled"
+            }
+        ],
+        "containerStatuses": [
+            {
+                "allocatedResources": {
+                    "cpu": "10m",
+                    "memory": "8Mi"
+                },
+                "containerID": "docker://c2fd955b6d7d41fc202bc6e51335d47ee5252f7690efd709d638e83a3288880a",
+                "image": "busybox:1.37.0",
+                "imageID": "docker-pullable://busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec",
+                "lastState": {},
+                "name": "demo",
+                "ready": true,
+                "resources": {
+                    "limits": {
+                        "cpu": "100m",
+                        "memory": "32Mi"
+                    },
+                    "requests": {
+                        "cpu": "10m",
+                        "memory": "8Mi"
+                    }
+                },
+                "restartCount": 0,
+                "started": true,
+                "state": {
+                    "running": {
+                        "startedAt": "2026-11-02T20:28:59Z"
+                    }
+                }
+            }
+        ],
+        "hostIP": "192.168.49.2",
+        "hostIPs": [
+            {
+                "ip": "192.168.49.2"
+            }
+        ],
+        "observedGeneration": 1,
+        "phase": "Running",
+        "podIP": "10.244.1.89",
+        "podIPs": [
+            {
+                "ip": "10.244.1.89"
+            }
+        ],
+        "qosClass": "Burstable",
+        "startTime": "2026-11-02T20:28:58Z"
+    }
+}
+Exit code: 0
+kubectl replace --raw /api/v1/namespaces/kyverno-validation/pods/kyverno-valid/ephemeralcontainers?dryRun=All -f -
+Error from server: admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-valid was blocked due to the following policies 
+
+disallow-latest:
+  require-explicit-image-version: 'validation failure: Usar una etiqueta explicita distinta de latest o un digest; tambien se revisan initContainers y ephemeralContainers.'
+Exit code: 1
+PASS: ephemeral-latest rechazado por disallow-latest.
+kubectl get pod kyverno-valid -n kyverno-validation -o json
+{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "creationTimestamp": "2026-11-02T20:28:58Z",
+        "generation": 1,
+        "labels": {
+            "app": "kyverno-validation"
+        },
+        "name": "kyverno-valid",
+        "namespace": "kyverno-validation",
+        "resourceVersion": "604127",
+        "uid": "0d0fcb8d-e122-4a23-84c0-370ad97cae6b"
+    },
+    "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+            {
+                "command": [
+                    "sh",
+                    "-c",
+                    "id; sleep 3600"
+                ],
+                "image": "busybox:1.37.0",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "demo",
+                "resources": {
+                    "limits": {
+                        "cpu": "100m",
+                        "memory": "32Mi"
+                    },
+                    "requests": {
+                        "cpu": "10m",
+                        "memory": "8Mi"
+                    }
+                },
+                "securityContext": {
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                        "drop": [
+                            "ALL"
+                        ]
+                    }
+                },
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File"
+            }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "enableServiceLinks": true,
+        "nodeName": "minikube",
+        "preemptionPolicy": "PreemptLowerPriority",
+        "priority": 0,
+        "restartPolicy": "Never",
+        "schedulerName": "default-scheduler",
+        "securityContext": {
+            "runAsGroup": 1000,
+            "runAsNonRoot": true,
+            "runAsUser": 1000,
+            "seccompProfile": {
+                "type": "RuntimeDefault"
+            }
+        },
+        "serviceAccount": "default",
+        "serviceAccountName": "default",
+        "terminationGracePeriodSeconds": 30,
+        "tolerations": [
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/not-ready",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            },
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/unreachable",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            }
+        ]
+    },
+    "status": {
+        "conditions": [
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:29:00Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "PodReadyToStartContainers"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:28:58Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "Initialized"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:29:00Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "Ready"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:29:00Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "ContainersReady"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:28:58Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "PodScheduled"
+            }
+        ],
+        "containerStatuses": [
+            {
+                "allocatedResources": {
+                    "cpu": "10m",
+                    "memory": "8Mi"
+                },
+                "containerID": "docker://c2fd955b6d7d41fc202bc6e51335d47ee5252f7690efd709d638e83a3288880a",
+                "image": "busybox:1.37.0",
+                "imageID": "docker-pullable://busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec",
+                "lastState": {},
+                "name": "demo",
+                "ready": true,
+                "resources": {
+                    "limits": {
+                        "cpu": "100m",
+                        "memory": "32Mi"
+                    },
+                    "requests": {
+                        "cpu": "10m",
+                        "memory": "8Mi"
+                    }
+                },
+                "restartCount": 0,
+                "started": true,
+                "state": {
+                    "running": {
+                        "startedAt": "2026-11-02T20:28:59Z"
+                    }
+                }
+            }
+        ],
+        "hostIP": "192.168.49.2",
+        "hostIPs": [
+            {
+                "ip": "192.168.49.2"
+            }
+        ],
+        "observedGeneration": 1,
+        "phase": "Running",
+        "podIP": "10.244.1.89",
+        "podIPs": [
+            {
+                "ip": "10.244.1.89"
+            }
+        ],
+        "qosClass": "Burstable",
+        "startTime": "2026-11-02T20:28:58Z"
+    }
+}
+Exit code: 0
+kubectl replace --raw /api/v1/namespaces/kyverno-validation/pods/kyverno-valid/ephemeralcontainers?dryRun=All -f -
+Error from server: admission webhook "validate.kyverno.svc-fail" denied the request: 
+
+resource Pod/kyverno-validation/kyverno-valid was blocked due to the following policies 
+
+disallow-root:
+  require-non-root: 'validation failure: Exigir runAsNonRoot=true y prohibir runAsUser=0, incluyendo initContainers y ephemeralContainers.'
+Exit code: 1
+PASS: ephemeral-root rechazado por disallow-root.
+kubectl get pod kyverno-valid -n kyverno-validation -o json
+{
+    "apiVersion": "v1",
+    "kind": "Pod",
+    "metadata": {
+        "creationTimestamp": "2026-11-02T20:28:58Z",
+        "generation": 1,
+        "labels": {
+            "app": "kyverno-validation"
+        },
+        "name": "kyverno-valid",
+        "namespace": "kyverno-validation",
+        "resourceVersion": "604127",
+        "uid": "0d0fcb8d-e122-4a23-84c0-370ad97cae6b"
+    },
+    "spec": {
+        "automountServiceAccountToken": false,
+        "containers": [
+            {
+                "command": [
+                    "sh",
+                    "-c",
+                    "id; sleep 3600"
+                ],
+                "image": "busybox:1.37.0",
+                "imagePullPolicy": "IfNotPresent",
+                "name": "demo",
+                "resources": {
+                    "limits": {
+                        "cpu": "100m",
+                        "memory": "32Mi"
+                    },
+                    "requests": {
+                        "cpu": "10m",
+                        "memory": "8Mi"
+                    }
+                },
+                "securityContext": {
+                    "allowPrivilegeEscalation": false,
+                    "capabilities": {
+                        "drop": [
+                            "ALL"
+                        ]
+                    }
+                },
+                "terminationMessagePath": "/dev/termination-log",
+                "terminationMessagePolicy": "File"
+            }
+        ],
+        "dnsPolicy": "ClusterFirst",
+        "enableServiceLinks": true,
+        "nodeName": "minikube",
+        "preemptionPolicy": "PreemptLowerPriority",
+        "priority": 0,
+        "restartPolicy": "Never",
+        "schedulerName": "default-scheduler",
+        "securityContext": {
+            "runAsGroup": 1000,
+            "runAsNonRoot": true,
+            "runAsUser": 1000,
+            "seccompProfile": {
+                "type": "RuntimeDefault"
+            }
+        },
+        "serviceAccount": "default",
+        "serviceAccountName": "default",
+        "terminationGracePeriodSeconds": 30,
+        "tolerations": [
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/not-ready",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            },
+            {
+                "effect": "NoExecute",
+                "key": "node.kubernetes.io/unreachable",
+                "operator": "Exists",
+                "tolerationSeconds": 300
+            }
+        ]
+    },
+    "status": {
+        "conditions": [
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:29:00Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "PodReadyToStartContainers"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:28:58Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "Initialized"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:29:00Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "Ready"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:29:00Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "ContainersReady"
+            },
+            {
+                "lastProbeTime": null,
+                "lastTransitionTime": "2026-11-02T20:28:58Z",
+                "observedGeneration": 1,
+                "status": "True",
+                "type": "PodScheduled"
+            }
+        ],
+        "containerStatuses": [
+            {
+                "allocatedResources": {
+                    "cpu": "10m",
+                    "memory": "8Mi"
+                },
+                "containerID": "docker://c2fd955b6d7d41fc202bc6e51335d47ee5252f7690efd709d638e83a3288880a",
+                "image": "busybox:1.37.0",
+                "imageID": "docker-pullable://busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec",
+                "lastState": {},
+                "name": "demo",
+                "ready": true,
+                "resources": {
+                    "limits": {
+                        "cpu": "100m",
+                        "memory": "32Mi"
+                    },
+                    "requests": {
+                        "cpu": "10m",
+                        "memory": "8Mi"
+                    }
+                },
+                "restartCount": 0,
+                "started": true,
+                "state": {
+                    "running": {
+                        "startedAt": "2026-11-02T20:28:59Z"
+                    }
+                }
+            }
+        ],
+        "hostIP": "192.168.49.2",
+        "hostIPs": [
+            {
+                "ip": "192.168.49.2"
+            }
+        ],
+        "observedGeneration": 1,
+        "phase": "Running",
+        "podIP": "10.244.1.89",
+        "podIPs": [
+            {
+                "ip": "10.244.1.89"
+            }
+        ],
+        "qosClass": "Burstable",
+        "startTime": "2026-11-02T20:28:58Z"
+    }
+}
+Exit code: 0
+kubectl replace --raw /api/v1/namespaces/kyverno-validation/pods/kyverno-valid/ephemeralcontainers?dryRun=All -f -
+{"kind":"Pod","apiVersion":"v1","metadata":{"name":"kyverno-valid","namespace":"kyverno-validation","uid":"0d0fcb8d-e122-4a23-84c0-370ad97cae6b","resourceVersion":"604127","generation":2,"creationTimestamp":"2026-11-02T20:28:58Z","labels":{"app":"kyverno-validation"},"managedFields":[{"manager":"kubectl-create","operation":"Update","apiVersion":"v1","time":"2026-11-02T20:28:58Z","fieldsType":"FieldsV1","fieldsV1":{"f:metadata":{"f:labels":{".":{},"f:app":{}}},"f:spec":{"f:automountServiceAccountToken":{},"f:containers":{"k:{\"name\":\"demo\"}":{".":{},"f:command":{},"f:image":{},"f:imagePullPolicy":{},"f:name":{},"f:resources":{".":{},"f:limits":{".":{},"f:cpu":{},"f:memory":{}},"f:requests":{".":{},"f:cpu":{},"f:memory":{}}},"f:securityContext":{".":{},"f:allowPrivilegeEscalation":{},"f:capabilities":{".":{},"f:drop":{}}},"f:terminationMessagePath":{},"f:terminationMessagePolicy":{}}},"f:dnsPolicy":{},"f:enableServiceLinks":{},"f:restartPolicy":{},"f:schedulerName":{},"f:securityContext":{".":{},"f:runAsGroup":{},"f:runAsNonRoot":{},"f:runAsUser":{},"f:seccompProfile":{".":{},"f:type":{}}},"f:terminationGracePeriodSeconds":{}}}},{"manager":"kubelet","operation":"Update","apiVersion":"v1","time":"2026-11-02T20:29:00Z","fieldsType":"FieldsV1","fieldsV1":{"f:status":{"f:conditions":{"k:{\"type\":\"ContainersReady\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}},"k:{\"type\":\"Initialized\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}},"k:{\"type\":\"PodReadyToStartContainers\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}},"k:{\"type\":\"PodScheduled\"}":{"f:observedGeneration":{}},"k:{\"type\":\"Ready\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}}},"f:containerStatuses":{},"f:hostIP":{},"f:hostIPs":{},"f:observedGeneration":{},"f:phase":{},"f:podIP":{},"f:podIPs":{".":{},"k:{\"ip\":\"10.244.1.89\"}":{".":{},"f:ip":{}}},"f:startTime":{}}},"subresource":"status"},{"manager":"kubectl.exe","operation":"Update","apiVersion":"v1","time":"2026-11-02T20:29:01Z","fieldsType":"FieldsV1","fieldsV1":{"f:spec":{"f:ephemeralContainers":{".":{},"k:{\"name\":\"debug-valid\"}":{".":{},"f:command":{},"f:image":{},"f:imagePullPolicy":{},"f:name":{},"f:resources":{},"f:securityContext":{".":{},"f:runAsNonRoot":{},"f:runAsUser":{}},"f:terminationMessagePath":{},"f:terminationMessagePolicy":{}}}}},"subresource":"ephemeralcontainers"}]},"spec":{"containers":[{"name":"demo","image":"busybox:1.37.0","command":["sh","-c","id; sleep 3600"],"resources":{"limits":{"cpu":"100m","memory":"32Mi"},"requests":{"cpu":"10m","memory":"8Mi"}},"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","imagePullPolicy":"IfNotPresent","securityContext":{"capabilities":{"drop":["ALL"]},"allowPrivilegeEscalation":false}}],"ephemeralContainers":[{"name":"debug-valid","image":"busybox:1.37.0","command":["true"],"resources":{},"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","imagePullPolicy":"IfNotPresent","securityContext":{"runAsUser":1000,"runAsNonRoot":true}}],"restartPolicy":"Never","terminationGracePeriodSeconds":30,"dnsPolicy":"ClusterFirst","serviceAccountName":"default","serviceAccount":"default","automountServiceAccountToken":false,"nodeName":"minikube","securityContext":{"runAsUser":1000,"runAsGroup":1000,"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}},"schedulerName":"default-scheduler","tolerations":[{"key":"node.kubernetes.io/not-ready","operator":"Exists","effect":"NoExecute","tolerationSeconds":300},{"key":"node.kubernetes.io/unreachable","operator":"Exists","effect":"NoExecute","tolerationSeconds":300}],"priority":0,"enableServiceLinks":true,"preemptionPolicy":"PreemptLowerPriority"},"status":{"observedGeneration":1,"phase":"Running","conditions":[{"type":"PodReadyToStartContainers","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-02T20:29:00Z"},{"type":"Initialized","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-02T20:28:58Z"},{"type":"Ready","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-02T20:29:00Z"},{"type":"ContainersReady","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-02T20:29:00Z"},{"type":"PodScheduled","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-02T20:28:58Z"}],"hostIP":"192.168.49.2","hostIPs":[{"ip":"192.168.49.2"}],"podIP":"10.244.1.89","podIPs":[{"ip":"10.244.1.89"}],"startTime":"2026-11-02T20:28:58Z","containerStatuses":[{"name":"demo","state":{"running":{"startedAt":"2026-11-02T20:28:59Z"}},"lastState":{},"ready":true,"restartCount":0,"image":"busybox:1.37.0","imageID":"docker-pullable://busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec","containerID":"docker://c2fd955b6d7d41fc202bc6e51335d47ee5252f7690efd709d638e83a3288880a","started":true,"allocatedResources":{"cpu":"10m","memory":"8Mi"},"resources":{"limits":{"cpu":"100m","memory":"32Mi"},"requests":{"cpu":"10m","memory":"8Mi"}}}],"qosClass":"Burstable"}}
+Exit code: 0
+PASS: ephemeral valido sin resources (API Kubernetes) aceptado.
+RESULTADO: 38 comprobaciones correctas.
+kubectl delete pod kyverno-valid -n kyverno-validation --wait=false
+pod "kyverno-valid" deleted
+Exit code: 0

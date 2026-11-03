@@ -1,0 +1,41 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest
+  annotations:
+    policies.kyverno.io/title: Prohibir imagenes latest
+    policies.kyverno.io/category: DevSecOps
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/severity: medium
+spec:
+  background: true
+  rules:
+    - name: require-explicit-image-version
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+      validate:
+        failureAction: Enforce
+        allowExistingViolations: false
+        message: "Usar una etiqueta explicita distinta de latest o un digest; tambien se revisan initContainers y ephemeralContainers."
+        foreach:
+          - list: "request.object.spec.[containers, initContainers, ephemeralContainers][]"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ regex_match('(^|.*/)[^/:]+:latest(@.*)?$', element.image) }}"
+                    operator: Equals
+                    value: true
+                  - key: "{{ regex_match('(^|.*/)[^/:]+(:[^/@]+|@[^/]+)$', element.image) }}"
+                    operator: Equals
+                    value: false

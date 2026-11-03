@@ -1,0 +1,41 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resources
+  annotations:
+    policies.kyverno.io/title: Exigir requests y limits
+    policies.kyverno.io/category: DevSecOps
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/severity: medium
+spec:
+  background: true
+  rules:
+    - name: require-cpu-memory
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - kyverno
+      validate:
+        failureAction: Enforce
+        allowExistingViolations: false
+        message: "Cada contenedor e initContainer debe declarar requests y limits positivos de CPU y memoria."
+        # La API de Kubernetes no permite resources en ephemeralContainers.
+        foreach:
+          - list: "request.object.spec.[containers, initContainers][]"
+            pattern:
+              resources:
+                requests:
+                  cpu: ">0"
+                  memory: ">0"
+                limits:
+                  cpu: ">0"
+                  memory: ">0"

@@ -1,0 +1,54 @@
+Analisis estatico de manifiestos Kubernetes
+Fecha UTC: 2026-11-02T20:27:02Z
+Herramienta: stackrox/kube-linter:v0.8.3
+Comando: kube-linter lint k8s scripts/flyway-repair.yaml
+Alcance: manifiestos de despliegue, monitoreo y politicas; tests/kyverno contiene fixtures intencionalmente invalidos y se analiza por separado con Kyverno.
+Configuracion: checks predeterminados, sin exclusiones ni supresiones.
+
+KubeLinter 0.8.3
+
+/work/k8s/backend-blue-deployment.yaml: (object: <no namespace>/playhub-backend-blue apps/v1, Kind=Deployment) container "backend" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
+
+/work/k8s/backend-green-deployment.yaml: (object: <no namespace>/playhub-backend-green apps/v1, Kind=Deployment) container "backend" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
+
+/work/k8s/frontend-blue-deployment.yaml: (object: <no namespace>/playhub-frontend-blue apps/v1, Kind=Deployment) container "frontend" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
+
+/work/k8s/frontend-green-deployment.yaml: (object: <no namespace>/playhub-frontend-green apps/v1, Kind=Deployment) container "frontend" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
+
+/work/k8s/migration-job.yaml: (object: <no namespace>/playhub-migrations batch/v1, Kind=Job) Standalone Job does not specify ttlSecondsAfterFinished (check: job-ttl-seconds-after-finished, remediation: Set Job.spec.ttlSecondsAfterFinished. Unset CronJob.Spec.JobTemplate.Spec.ttlSecondsAfterFinished.)
+
+/work/k8s/migration-job.yaml: (object: <no namespace>/playhub-migrations batch/v1, Kind=Job) container "flyway" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
+
+/work/k8s/postgres-deployment.yaml: (object: <no namespace>/playhub-postgres apps/v1, Kind=Deployment) container "postgres" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
+
+/work/k8s/monitoring/cadvisor-network.yaml: (object: <no namespace>/playhub-cadvisor-network apps/v1, Kind=DaemonSet) object shares the host's process namespace (via hostPID=true). (check: host-pid, remediation: Ensure the host's process namespace is not shared.)
+
+/work/k8s/monitoring/cadvisor-network.yaml: (object: <no namespace>/playhub-cadvisor-network apps/v1, Kind=DaemonSet) container "cadvisor" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
+
+/work/k8s/monitoring/cadvisor-network.yaml: (object: <no namespace>/playhub-cadvisor-network apps/v1, Kind=DaemonSet) container "cadvisor" is Privileged hence allows privilege escalation. (check: privilege-escalation-container, remediation: Ensure containers do not allow privilege escalation by setting allowPrivilegeEscalation=false, privileged=false and removing CAP_SYS_ADMIN capability. See https://kubernetes.io/docs/tasks/configure-pod-container/security-context/ for more details.)
+
+/work/k8s/monitoring/cadvisor-network.yaml: (object: <no namespace>/playhub-cadvisor-network apps/v1, Kind=DaemonSet) container "cadvisor" is privileged (check: privileged-container, remediation: Do not run your container as privileged unless it is required.)
+
+/work/k8s/monitoring/cadvisor-network.yaml: (object: <no namespace>/playhub-cadvisor-network apps/v1, Kind=DaemonSet) container "cadvisor" is not set to runAsNonRoot (check: run-as-non-root, remediation: Set runAsUser to a non-zero number and runAsNonRoot to true in your pod or container securityContext. Refer to https://kubernetes.io/docs/tasks/configure-pod-container/security-context/ for details.)
+
+/work/k8s/monitoring/cadvisor-network.yaml: (object: <no namespace>/playhub-cadvisor-network apps/v1, Kind=DaemonSet) host system directory "/" is mounted on container "cadvisor" (check: sensitive-host-mounts, remediation: Ensure sensitive host system directories are not mounted in containers by removing those Volumes and VolumeMounts.)
+
+Error: found 21 lint errors
+/work/k8s/monitoring/cadvisor-network.yaml: (object: <no namespace>/playhub-cadvisor-network apps/v1, Kind=DaemonSet) host system directory "/sys" is mounted on container "cadvisor" (check: sensitive-host-mounts, remediation: Ensure sensitive host system directories are not mounted in containers by removing those Volumes and VolumeMounts.)
+
+/work/k8s/monitoring/grafana.yaml: (object: <no namespace>/playhub-grafana apps/v1, Kind=Deployment) container "grafana" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
+
+/work/k8s/monitoring/node-exporter.yaml: (object: <no namespace>/playhub-node-exporter apps/v1, Kind=DaemonSet) resource shares host's network namespace (via hostNetwork=true). (check: host-network, remediation: Ensure the host's network namespace is not shared.)
+
+/work/k8s/monitoring/node-exporter.yaml: (object: <no namespace>/playhub-node-exporter apps/v1, Kind=DaemonSet) object shares the host's process namespace (via hostPID=true). (check: host-pid, remediation: Ensure the host's process namespace is not shared.)
+
+/work/k8s/monitoring/node-exporter.yaml: (object: <no namespace>/playhub-node-exporter apps/v1, Kind=DaemonSet) host system directory "/" is mounted on container "node-exporter" (check: sensitive-host-mounts, remediation: Ensure sensitive host system directories are not mounted in containers by removing those Volumes and VolumeMounts.)
+
+/work/k8s/monitoring/prometheus.yaml: (object: <no namespace>/playhub-prometheus apps/v1, Kind=Deployment) container "prometheus" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
+
+/work/scripts/flyway-repair.yaml: (object: <no namespace>/playhub-migrations-repair batch/v1, Kind=Job) Standalone Job does not specify ttlSecondsAfterFinished (check: job-ttl-seconds-after-finished, remediation: Set Job.spec.ttlSecondsAfterFinished. Unset CronJob.Spec.JobTemplate.Spec.ttlSecondsAfterFinished.)
+
+/work/scripts/flyway-repair.yaml: (object: <no namespace>/playhub-migrations-repair batch/v1, Kind=Job) container "flyway" does not have a read-only root file system (check: no-read-only-root-fs, remediation: Set readOnlyRootFilesystem to true in the container securityContext.)
+
+
+Exit code: 1
