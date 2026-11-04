@@ -370,3 +370,72 @@ La ejecución registra **21 hallazgos** y **exit code 1**.
 
 Estos hallazgos quedan documentados y visibles; la entrega no afirma que todos
 los checks de KubeLinter estén resueltos.
+
+## Seguridad en tiempo de ejecución con Falco
+### Instalación y configuración
+En primer lugar, instalamos Helm, el gestor de paquetes utilizado para desplegar Falco en Kubernetes.
+
+```powershell
+winget install --id Helm.Helm -e
+```
+
+Agregamos el repositorio oficial de Falco a Helm.
+
+```powershell
+helm repo add falcosecurity https://falcosecurity.github.io/charts
+```
+
+Se creó el directorio security/falco para almacenar el archivo de configuración values.yaml. Este archivo define los parámetros del despliegue de Falco, incluyendo el uso de un DaemonSet, que permite ejecutar un Pod de Falco en cada nodo elegible del clúster.
+
+También se configuró el uso del driver modern_ebpf para la captura de eventos del sistema y se habilitó la salida de alertas por consola.
+
+Se utilizaron las reglas de Falco para detectar la ejecución de shells interactivas dentro de los contenedores. En particular, se utiliza la regla integrada `A shell was spawned in a container with an attached terminal`, que permite identificar cuándo se abre una terminal interactiva dentro de un contenedor.
+
+Finalmente, desplegamos Falco mediante Helm, utilizando el archivo de configuración anterior desde el directorio raíz del proyecto.
+
+```powershell
+helm upgrade --install falco falcosecurity/falco `
+    --version 9.2.2 `
+    --namespace falco `
+    --create-namespace `
+    --values .\security\falco\values.yaml `
+    --wait `
+    --timeout 5m
+```
+
+### Simulación de ataque
+Una vez desplegado Falco, realizamos una simulación para comprobar el funcionamiento de las reglas de detección.
+
+Para esto abrimos una shell interactiva dentro del backend de PlayHub.
+
+```powershell
+kubectl exec -it -n default playhub-backend-blue-5f6b87ddb-4zvvk -- sh
+```
+
+Dentro de la terminal se ejecutan comandos básicos.
+
+```bash
+whoami
+hostname
+ps
+```
+
+Luego salimos con el comando `exit`.
+
+Verificamos que se hayan registrado estos eventos.
+
+```powershell
+kubectl logs -n falco -l app.kubernetes.io/name=falco -c falco --since=5m |
+    Select-String "A shell was spawned in a container with an attached terminal"
+```
+
+### Creación de scripts
+Para facilitar el trabajo de instalación, simulación y obtención de reportes se crearon tres scripts, cada uno con su versión en PowerShell y en Bash.
+
+- `falco-deploy` verifica que exista el comando `helm`, `kubectl`, que exista el archivo de configuración de Falco, que se pueda conectar con Kubernetes, agrega Falco al repositorio de Helm, lo instala o actualiza y espera a que los Pods de Falco estén listos.
+
+- `simulate-shell-attack` simula un ataque por medio de una shell interactiva. Para esto, identifica un Pod en ejecución mediante su etiqueta y obtiene el nombre del contenedor en el que se abrirá la terminal.
+
+- `get-falco-report` genera dos archivos: un archivo `.log` con los eventos guardados en los logs de Falco y un archivo `.txt` con un reporte resumido de las alertas encontradas. Estos archivos se guardan en la carpeta `reports/falco`. Se ha dejado como constancia dos de estos archivos a modo de ejemplo y como evidencia del trabajo realizado.
+
+

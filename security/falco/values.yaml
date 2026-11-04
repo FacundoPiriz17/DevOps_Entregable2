@@ -1,0 +1,11 @@
+driver:
+  enabled: true
+  kind: modern_ebpf
+
+  modernEbpf:
+    leastPrivileged: false
+
+tty: true
+
+controller:
+  kind: daemonset
