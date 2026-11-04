@@ -10,7 +10,7 @@ $Chart = "falcosecurity/falco"
 $ChartVersion = "9.2.2"
 
 Write-Host "========================================"
-Write-Host "       PLAYHUB - DEPLOYMENT DE FALCO"
+Write-Host "     PLAYHUB - DEPLOYMENT DE FALCO"
 Write-Host "========================================"
 
 foreach ($Command in @("helm", "kubectl")) {

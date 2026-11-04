@@ -9,18 +9,3 @@ tty: true
 
 controller:
   kind: daemonset
-
-customRules:
-  playhub-host-shell.yaml: |-
-    - rule: Interactive Shell on Minikube Node
-      desc: Detect an interactive shell started on the Kubernetes node
-      condition: >
-        spawned_process
-        and proc.name in (bash, sh, zsh, ash, dash)
-        and proc.tty != 0
-      output: >
-        Interactive shell detected on Minikube node
-        (user=%user.name uid=%user.uid process=%proc.name
-        parent=%proc.pname command=%proc.cmdline terminal=%proc.tty)
-      priority: WARNING
-      tags: [host, shell, playhub]
