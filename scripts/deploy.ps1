@@ -323,8 +323,15 @@ function Test-ClusterImage {
 
     $checkPod = "playhub-image-check-$Index-$([guid]::NewGuid().ToString('N').Substring(0, 12))"
     $createdCheckPod = $false
-    $overrides = @{
+    $checkPodJson = @{
+        apiVersion = 'v1'
+        kind = 'Pod'
+        metadata = @{
+            name = $checkPod
+            labels = @{ app = 'playhub-image-check' }
+        }
         spec = @{
+            restartPolicy = 'Never'
             automountServiceAccountToken = $false
             securityContext = @{ runAsNonRoot = $true; runAsUser = 1000; runAsGroup = 1000 }
             containers = @(@{
@@ -335,22 +342,14 @@ function Test-ClusterImage {
             })
         }
     } | ConvertTo-Json -Depth 10 -Compress
+    $checkPodManifest = [System.IO.Path]::GetTempFileName()
 
     try {
-        Invoke-Kubectl -Arguments @(
-            "run",
-            $checkPod,
-            "--image=$Image",
-            "--image-pull-policy=Never",
-            "--labels=app=playhub-image-check",
-            "--restart=Never",
-            "--overrides=$overrides",
-            "--command",
-            "--",
-            "/bin/sh",
-            "-c",
-            "exit 0"
-        )
+        # Windows PowerShell 5.1 strips JSON quotes in native command arguments.
+        # Pass the complete Pod as a UTF-8 file to preserve its shell command.
+        $utf8WithoutBom = [System.Text.UTF8Encoding]::new($false)
+        [System.IO.File]::WriteAllText($checkPodManifest, $checkPodJson, $utf8WithoutBom)
+        Invoke-Kubectl -Arguments @('create', '-f', $checkPodManifest)
         $createdCheckPod = $true
 
         for ($attempt = 0; $attempt -lt 45; $attempt++) {
@@ -399,6 +398,7 @@ function Test-ClusterImage {
         throw "Tiempo agotado comprobando la imagen '$Image'."
     }
     finally {
+        Remove-Item -LiteralPath $checkPodManifest -Force -ErrorAction SilentlyContinue
         if ($createdCheckPod) {
             Invoke-Kubectl -Arguments @('delete', 'pod', $checkPod, '--ignore-not-found=true', '--wait=false')
         }
