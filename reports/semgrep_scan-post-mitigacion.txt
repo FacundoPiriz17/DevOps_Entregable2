@@ -1,0 +1,61 @@
+
+
+┌─────────────┐
+│ Scan Status │
+└─────────────┘
+  Scanning 140 files tracked by git with 180 Code rules:
+
+  Language      Rules   Files          Origin      Rules
+ ─────────────────────────────        ───────────────────
+  <multilang>      36     140          Community     180
+  java             60      84
+  js               68      36
+
+
+
+┌─────────────────┐
+│ 8 Code Findings │
+└─────────────────┘
+
+    backend/src/main/resources/db/migration/V2__demo_data.sql
+   ❯❯❱ rules.generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
+          ❰❰ Blocking ❱❱
+          bcrypt hash detected
+          Details: https://sg.run/3A8G
+
+           10┆ ('facundo@playhub.test',  '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           11┆ ('santiago@playhub.test', '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           12┆ ('agostina@playhub.test', '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           13┆ ('agustin@playhub.test',  '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86');
+
+    db/02_inserts.sql
+   ❯❯❱ rules.generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
+          ❰❰ Blocking ❱❱
+          bcrypt hash detected
+          Details: https://sg.run/3A8G
+
+           12┆ ('facundo@playhub.test',  '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           13┆ ('santiago@playhub.test', '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           14┆ ('agostina@playhub.test', '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86'),
+            ⋮┆----------------------------------------
+           15┆ ('agustin@playhub.test',  '$2y$10$R3kU7pEExfg12gokXHAp8Oqni2RvjN.g48I7m.0P/r9WneXh.ZT86');
+
+
+
+┌──────────────┐
+│ Scan Summary │
+└──────────────┘
+✅ Scan completed successfully.
+ • Findings: 8 (8 blocking)
+ • Rules run: 164
+ • Targets scanned: 140
+ • Parsed lines: ~100.0%
+ • Scan skipped:
+   ◦ Files matching .semgrepignore patterns: 1
+ • For a detailed list of skipped files and lines, run semgrep with the --verbose flag
+Ran 164 rules on 140 files: 8 findings.

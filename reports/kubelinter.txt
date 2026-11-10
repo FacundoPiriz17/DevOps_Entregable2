@@ -1,5 +1,5 @@
 Analisis estatico de manifiestos Kubernetes
-Fecha UTC: 2026-11-03T21:38:13Z
+Fecha UTC: 2026-11-10T13:19:12Z
 Herramienta: stackrox/kube-linter:v0.8.3
 Comando: kube-linter lint k8s scripts/flyway-repair.yaml
 Alcance: manifiestos de despliegue, monitoreo y politicas; tests/kyverno contiene fixtures intencionalmente invalidos y se analiza por separado con Kyverno.

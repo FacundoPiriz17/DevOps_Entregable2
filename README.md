@@ -1193,7 +1193,7 @@ instalar Kyverno, una vez por clúster.
 | Script | Función | Cuándo ejecutarlo |
 |---|---|---|
 | `scripts/install-kyverno.ps1` | Instala Kyverno y aplica las tres políticas. | Al preparar un clúster nuevo, antes de desplegar la app. |
-| `scripts/validate-kyverno.ps1` | Prueba la aceptación y el rechazo de manifiestos y guarda `reports/kyverno-validation.txt`. | Después de instalar o modificar las políticas, o para demostrar el entregable. |
+| `scripts/validate-kyverno.ps1` | Prueba la aceptación y el rechazo de manifiestos y guarda `reports/kyverno-validation-post-mitigacion.txt`. | Después de instalar o modificar las políticas, o para demostrar el entregable. |
 | `scripts/lint-kubernetes.ps1` | Analiza los manifiestos con KubeLinter y guarda `reports/kubelinter.txt`. | Después de modificar los YAML y antes de entregar o desplegar. |
 
 Para que el profesor o un integrante del equipo reproduzca esta parte, con
@@ -1203,15 +1203,30 @@ PowerShell:
 ```powershell
 .\scripts\install-kyverno.ps1
 .\scripts\deploy.ps1 -ClusterType minikube -DeployGreen
+.\scripts\deploy-falco.ps1
 .\scripts\validate-kyverno.ps1
 .\scripts\lint-kubernetes.ps1
 ```
 
 Los scripts de validación y análisis generan la evidencia; no son requisitos
 para arrancar la app. KubeLinter puede ejecutarse con Docker sin un clúster
-activo. Cada ejecución reemplaza el reporte correspondiente.
+activo.
 
 `deploy.ps1` y `deploy.sh` no ejecutan automáticamente estos scripts de
 seguridad. Una vez instalado Kyverno, las políticas se aplican automáticamente
 a los siguientes despliegues, sin repetir la instalación en cada arranque.
 ver más en [kyverno.md](kyverno.md)
+
+
+Para completar la demostración de Falco:
+
+```powershell
+.\scripts\simulate-shell-attack.ps1 -Seconds 2
+.\scripts\get-falco-report.ps1
+Get-Content reports/falco-event.log
+```
+
+Los resultados, las mitigaciones y los hallazgos aceptados se explican en
+[DevSecOps.md](DevSecOps.md). Se mantienen los bcrypt de datos demo. Los cuatro
+archivos exigidos están en `reports/npm-audit.txt`, `reports/trivyreport.txt`,
+`reports/kubelinter.txt` y `reports/falco-event.log`.

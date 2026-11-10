@@ -10,7 +10,8 @@ metadata:
     # Se valida cada Pod real para acotar la excepcion de cAdvisor a su owner.
     pod-policies.kyverno.io/autogen-controllers: none
 spec:
-  background: true
+  # La excepcion usa la identidad autenticada del controlador de DaemonSets.
+  background: false
   rules:
     - name: require-non-root
       match:
@@ -28,11 +29,14 @@ spec:
                 - kyverno
       preconditions:
         all:
-          # Excepcion aprobada: solo Pods del DaemonSet existente en default.
-          # Un label por si solo no desactiva esta politica.
-          - key: "{{ request.object.metadata.namespace || 'default' }}:{{ request.object.metadata.ownerReferences[?kind == 'DaemonSet' && controller == `true`].name | [0] || '' }}:{{ request.object.metadata.labels.app || '' }}"
+          # El owner y los labels no autentican al creador. Se exige ademas
+          # el ServiceAccount real del controlador (--use-service-account-credentials).
+          - key: "{{ request.object.metadata.namespace || 'default' }}:{{ request.object.metadata.ownerReferences[?kind == 'DaemonSet' && controller == `true`].name | [0] || '' }}:{{ request.object.metadata.labels.app || '' }}:{{ request.userInfo.username || '' }}"
             operator: NotEquals
-            value: "default:playhub-cadvisor-network:playhub-cadvisor-network"
+            value: "default:playhub-cadvisor-network:playhub-cadvisor-network:system:serviceaccount:kube-system:daemon-set-controller"
+          - key: "{{ request.object.metadata.namespace || 'default' }}:{{ request.object.metadata.ownerReferences[?kind == 'DaemonSet' && controller == `true`].name | [0] || '' }}:{{ request.object.spec.serviceAccountName || 'default' }}:{{ request.userInfo.username || '' }}"
+            operator: NotEquals
+            value: "falco:falco:falco:system:serviceaccount:kube-system:daemon-set-controller"
       validate:
         failureAction: Enforce
         allowExistingViolations: false

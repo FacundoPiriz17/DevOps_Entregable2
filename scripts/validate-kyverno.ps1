@@ -3,7 +3,7 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$report = Join-Path $projectRoot 'reports/kyverno-validation.txt'
+$report = Join-Path $projectRoot 'reports/kyverno-validation-post-mitigacion.txt'
 $lines = New-Object 'System.Collections.Generic.List[string]'
 $namespace = 'kyverno-validation'
 $fixture = Join-Path $projectRoot 'tests/kyverno/valid-pod.yaml'
@@ -21,6 +21,7 @@ function Invoke-KubeCapture {
         $code = $LASTEXITCODE
     } finally { $ErrorActionPreference = $previous }
     $text = ($output | ForEach-Object { "$_" }) -join "`n"
+    $text = [regex]::Replace($text, '(?m)[ \t]+\r?$', '')
     $lines.Add("kubectl $($Arguments -join ' ')")
     if ($SummarizeJson -and $code -eq 0) {
         $lines.Add('JSON leido para extraer el Pod template; se omite su contenido para mantener la evidencia legible.')
@@ -112,6 +113,18 @@ try {
         $p.spec.securityContext.runAsNonRoot = $false
         $p.spec.securityContext.runAsUser = 0
     } @('disallow-root')
+    Test-Pod 'fake-cadvisor-owner' { param($p)
+        $p.metadata.namespace = 'default'
+        $p.metadata.labels.app = 'playhub-cadvisor-network'
+        $p.metadata | Add-Member ownerReferences @(@{ apiVersion = 'apps/v1'; kind = 'DaemonSet'; name = 'playhub-cadvisor-network'; uid = '00000000-0000-0000-0000-000000000001'; controller = $true })
+        $p.spec.securityContext.runAsUser = 0
+    } @('disallow-root')
+    Test-Pod 'fake-falco-owner' { param($p)
+        $p.metadata.namespace = 'falco'
+        $p.metadata | Add-Member ownerReferences @(@{ apiVersion = 'apps/v1'; kind = 'DaemonSet'; name = 'falco'; uid = '00000000-0000-0000-0000-000000000001'; controller = $true })
+        $p.spec | Add-Member serviceAccountName 'falco'
+        $p.spec.securityContext.runAsUser = 0
+    } @('disallow-root')
     Test-Pod 'second-container' { param($p)
         $other = $p.spec.containers[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
         $other.name = 'other'
@@ -140,6 +153,9 @@ try {
     $lines.Add('Pod templates: se usa ServiceAccount default para probar las politicas sin desplegar el RBAC de PlayHub. No se comprueba el arranque de estos servicios.')
     $manifests = @(Get-ChildItem (Join-Path $projectRoot 'k8s') -Recurse -Filter '*.yaml')
     $manifests += Get-Item (Join-Path $projectRoot 'scripts/flyway-repair.yaml')
+    $falcoManifest = Join-Path $projectRoot '.tmp/security-reports/falco-rendered.yaml'
+    if (-not (Test-Path $falcoManifest)) { throw 'Renderizar Falco 9.2.2 en .tmp/security-reports/falco-rendered.yaml antes de validar.' }
+    $manifests += Get-Item $falcoManifest
     foreach ($manifest in $manifests) {
         if ($manifest.Name -eq 'secret.yaml' -or $manifest.Directory.Name -eq 'kyverno') { continue }
         $parsed = Invoke-KubeCapture -Arguments @('create', '--dry-run=client', '-f', $manifest.FullName, '-o', 'json') -SummarizeJson
@@ -155,7 +171,7 @@ try {
             if (-not $workload.spec.template.spec.containers) { continue }
             $metadata = @{
                 name = "admission-$($workload.metadata.name)"
-                namespace = 'default'
+                namespace = $(if ($manifest.FullName -eq $falcoManifest) { 'falco' } else { 'default' })
                 labels = $workload.spec.template.metadata.labels
             }
             if ($workload.kind -eq 'DaemonSet') {
@@ -165,11 +181,34 @@ try {
                 })
             }
             $pod = @{ apiVersion = 'v1'; kind = 'Pod'; metadata = $metadata; spec = $workload.spec.template.spec }
-            $pod.spec.PSObject.Properties.Remove('serviceAccountName')
+            if ($metadata.namespace -ne 'falco') { $pod.spec.PSObject.Properties.Remove('serviceAccountName') }
             $pod.spec.PSObject.Properties.Remove('serviceAccount')
-            $result = Invoke-KubeCapture @('create', '--dry-run=server', '-f', '-') ($pod | ConvertTo-Json -Depth 40)
+            $arguments = @('create', '--dry-run=server', '-f', '-')
+            if ($workload.metadata.name -in @('falco', 'playhub-cadvisor-network')) {
+                # Impersonacion solo para comprobar la identidad real de admision;
+                # el administrador de laboratorio necesita permiso impersonate.
+                $arguments += '--as=system:serviceaccount:kube-system:daemon-set-controller'
+            }
+            $result = Invoke-KubeCapture $arguments ($pod | ConvertTo-Json -Depth 40)
             Assert-Allowed "Pod template $($workload.metadata.name)" $result
         }
+    }
+
+    # Ejecutar las funciones reales del despliegue, sin volver a desplegar la app.
+    $tokens = $null; $parseErrors = $null
+    $deployAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'deploy.ps1'), [ref]$tokens, [ref]$parseErrors)
+    foreach ($name in @('Invoke-Kubectl', 'Get-KubectlOutput', 'Test-ClusterImage')) {
+        $definition = $deployAst.Find({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
+        if (-not $definition) { throw "Funcion de despliegue ausente: $name" }
+        Invoke-Expression $definition.Extent.Text
+    }
+    $index = 0
+    foreach ($image in @('playhub-frontend:v1.0', 'playhub-backend:v1.0', 'playhub-frontend:v2.0', 'playhub-backend:v2.0')) {
+        $index++
+        $lines.Add("Test-ClusterImage -Image $image -Index $index (funcion real deploy.ps1, Kyverno activo)")
+        Test-ClusterImage -Image $image -Index $index
+        $lines.Add("PASS: Pod auxiliar $image ejecutado sin root y limpiado.")
+        $passed++
     }
 
     # Intento real de creacion: debe fallar por las tres politicas, no por sintaxis.

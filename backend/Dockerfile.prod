@@ -1,4 +1,4 @@
-FROM maven:3.9-eclipse-temurin-26 AS build
+FROM maven:3.9-eclipse-temurin-26@sha256:b2c1ad85954592f9928e84327c65201f308ad9b5d8ed7d5b823717c97bf23fbb AS build
 
 WORKDIR /app
 
@@ -11,13 +11,13 @@ COPY src ./src
 RUN mvn -q -DskipTests package
 
 
-FROM eclipse-temurin:26-jre-alpine
+FROM eclipse-temurin:26-jre-alpine@sha256:158186ab168dc35e5a8e799f6195eef61d57a86a73348fc3a1188317fc40f01c
 
 WORKDIR /app
 
-RUN apk upgrade --no-cache brotli-libs
+RUN apk upgrade --no-cache brotli-libs libexpat zlib
 
-RUN addgroup -S spring && adduser -S spring -G spring
+RUN addgroup -S -g 1000 spring && adduser -S -u 1000 spring -G spring
 
 COPY --from=build --chown=spring:spring /app/target/*.jar app.jar
 

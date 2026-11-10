@@ -1,0 +1,26 @@
+[
+  {
+    "downloadedUtc": "2026-11-10T13:34:19.6045904Z",
+    "registry": "https://semgrep.dev/c/p/java",
+    "sha256": "CD18A28D7EFE2B9D4D1EB08D67455B8D50DDEE645AA7B5263065D0A9C3C5054C",
+    "file": "rules/java.yaml"
+  },
+  {
+    "downloadedUtc": "2026-11-10T13:34:19.6979058Z",
+    "registry": "https://semgrep.dev/c/p/javascript",
+    "sha256": "98C30AE17A2CC160A68800963D5FDABE989DDB2E59B9588063B493B25972A3F1",
+    "file": "rules/javascript.yaml"
+  },
+  {
+    "downloadedUtc": "2026-11-10T13:34:19.7144131Z",
+    "registry": "https://semgrep.dev/c/p/secrets",
+    "sha256": "F680EDE6BA7AF3E63A046C2F2C4D117181630B5308BE16B22A48A82636D61B6B",
+    "file": "rules/secrets.yaml"
+  },
+  {
+    "downloadedUtc": "2026-11-10T13:34:19.7466097Z",
+    "registry": "https://semgrep.dev/c/p/kubernetes",
+    "sha256": "5BECF55E5BD46A9ADAF0094CF9952888A4DE2463919D2CE072B05C35171772D3",
+    "file": "rules/kubernetes.yaml"
+  }
+]

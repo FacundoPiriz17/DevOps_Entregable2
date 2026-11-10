@@ -1,6 +1,6 @@
 # Scripts de despliegue (PlayHub en Kubernetes)
 
-Esta carpeta contiene los scripts para desplegar PlayHub en un cluster de Kubernetes usando la estrategia Blue/Green, y para alternar entre los slots Blue y Green. Cada script existe en dos versiones equivalentes:
+Esta carpeta contiene los scripts para desplegar PlayHub en un cluster de Kubernetes usando la estrategia Blue/Green, y para alternar entre los slots Blue y Green. Los scripts de despliegue, cambio de slot y Falco tienen dos variantes:
 
 - `*.sh` — Bash, para Linux/macOS o Git Bash/WSL en Windows.
 - `*.ps1` — PowerShell, para Windows.
@@ -244,3 +244,58 @@ demo de monitoreo.
 # 4. Si algo falla, volver a Blue
 ./scripts/switch-slot.sh blue
 ```
+
+
+## Seguridad del entregable 3
+
+Con Kyverno previamente activo, los Pods auxiliares declaran recursos y
+UID/GID 1000. Al desplegar Blue y Green desde el mismo código, ambos slots
+utilizan la misma imagen de cada componente.
+
+### Uso — Windows PowerShell
+
+```powershell
+.\scripts\install-kyverno.ps1
+.\scripts\deploy.ps1 -DeployGreen
+.\scripts\deploy-falco.ps1
+.\scripts\validate-kyverno.ps1
+.\scripts\simulate-shell-attack.ps1 -Seconds 2
+.\scripts\get-falco-report.ps1
+```
+
+### Uso — Linux/macOS (Bash)
+
+```bash
+bash scripts/deploy.sh --deploy-green
+bash scripts/deploy-falco.sh
+bash scripts/simulate-shell-attack.sh --seconds 2
+bash scripts/get-falco-report.sh
+```
+
+El instalador del proyecto utiliza Helm y fija el chart de Falco 9.2.2.
+Los scripts de simulación y recolección requieren Python 3.11+. En Git Bash,
+si Python se llama `python`, anteponer `PYTHON=python` a esos dos comandos.
+Las variantes se probaron en Windows con PowerShell y Git Bash.
+
+Sin `-Seconds` / `--seconds`, la shell permanece interactiva hasta `exit`.
+El recolector acepta `-WaitSeconds` / `--wait-seconds` y falla si no encuentra
+una alerta coincidente. Guarda la alerta en `reports/falco-event.log`. Una
+prueba de más de una hora debe repetirse. No usa alertas históricas o de otros
+contenedores como evidencia.
+
+### Regenerar informes posteriores
+
+```powershell
+.\scripts\audit-frontend.ps1
+.\scripts\scan-semgrep.ps1
+.\scripts\scan-images.ps1
+.\scripts\lint-kubernetes.ps1
+```
+
+Los nombres de los reportes se detallan en
+[DevSecOps.md](../DevSecOps.md#comparación-de-informes).
+
+El audit completo devuelve 1 por las moderadas de desarrollo aceptadas y
+KubeLinter devuelve 1 por sus 21 hallazgos documentados. Semgrep sin `--error`
+puede devolver 0 con hallazgos blocking. No se confunde terminar correctamente
+con quedar libre de hallazgos.

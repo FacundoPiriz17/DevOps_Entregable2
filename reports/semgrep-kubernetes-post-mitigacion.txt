@@ -1,0 +1,205 @@
+Analisis Semgrep de manifiestos Kubernetes
+Fecha UTC: 2026-11-10T15:30:30.7334707Z
+Comando: docker run --rm --mount type=bind,source=C:\devops\DevOps_Entregable2\.tmp\security-scan,target=/input,readonly --mount type=bind,source=C:\devops\DevOps_Entregable2\.tmp\security-reports,target=/results --mount type=bind,source=C:\devops\DevOps_Entregable2/security/semgrep/rules,target=/rules,readonly --entrypoint sh semgrep/semgrep:1.182.1 -c mkdir -p /src && tar -xf /input/source.tar -C /src && cd /src && exec semgrep "$@" sh scan --oss-only --jobs=2 --timeout=15 --metrics=off --disable-version-check --exclude node_modules --exclude .next --exclude target --json-output /results/semgrep-kubernetes.json --config /rules/kubernetes.yaml k8s scripts/flyway-repair.yaml
+
+
+
+┌─────────────┐
+│ Scan Status │
+└─────────────┘
+  Scanning 25 files tracked by git with 11 Code rules:
+  Scanning 24 files with 11 yaml rules.
+
+
+┌──────────────────┐
+│ 16 Code Findings │
+└──────────────────┘
+
+    k8s/backend-blue-deployment.yaml
+    ❯❱ rules.yaml.kubernetes.security.writable-filesystem-container.writable-filesystem-container
+          ❰❰ Blocking ❱❱
+          Container backend is running with a writable root filesystem. This may allow malicious applications
+          to download and run additional payloads, or modify container files. If an application inside a
+          container has to save something temporarily consider using a tmpfs. Add 'readOnlyRootFilesystem:
+          true' to this container to prevent this.
+          Details: https://sg.run/ZePL
+
+           32┆ - name: backend
+
+    k8s/backend-green-deployment.yaml
+    ❯❱ rules.yaml.kubernetes.security.writable-filesystem-container.writable-filesystem-container
+          ❰❰ Blocking ❱❱
+          Container backend is running with a writable root filesystem. This may allow malicious applications
+          to download and run additional payloads, or modify container files. If an application inside a
+          container has to save something temporarily consider using a tmpfs. Add 'readOnlyRootFilesystem:
+          true' to this container to prevent this.
+          Details: https://sg.run/ZePL
+
+           32┆ - name: backend
+
+    k8s/frontend-blue-deployment.yaml
+    ❯❱ rules.yaml.kubernetes.security.writable-filesystem-container.writable-filesystem-container
+          ❰❰ Blocking ❱❱
+          Container frontend is running with a writable root filesystem. This may allow malicious applications
+          to download and run additional payloads, or modify container files. If an application inside a
+          container has to save something temporarily consider using a tmpfs. Add 'readOnlyRootFilesystem:
+          true' to this container to prevent this.
+          Details: https://sg.run/ZePL
+
+           32┆ - name: frontend
+
+    k8s/frontend-green-deployment.yaml
+    ❯❱ rules.yaml.kubernetes.security.writable-filesystem-container.writable-filesystem-container
+          ❰❰ Blocking ❱❱
+          Container frontend is running with a writable root filesystem. This may allow malicious applications
+          to download and run additional payloads, or modify container files. If an application inside a
+          container has to save something temporarily consider using a tmpfs. Add 'readOnlyRootFilesystem:
+          true' to this container to prevent this.
+          Details: https://sg.run/ZePL
+
+           32┆ - name: frontend
+
+    k8s/migration-job.yaml
+    ❯❱ rules.yaml.kubernetes.security.writable-filesystem-container.writable-filesystem-container
+          ❰❰ Blocking ❱❱
+          Container flyway is running with a writable root filesystem. This may allow malicious applications
+          to download and run additional payloads, or modify container files. If an application inside a
+          container has to save something temporarily consider using a tmpfs. Add 'readOnlyRootFilesystem:
+          true' to this container to prevent this.
+          Details: https://sg.run/ZePL
+
+           23┆ - name: flyway
+
+    k8s/monitoring/cadvisor-network.yaml
+     ❱ rules.yaml.kubernetes.security.run-as-non-root.run-as-non-root
+          ❰❰ Blocking ❱❱
+          When running containers in Kubernetes, it's important to ensure that they  are properly secured to
+          prevent privilege escalation attacks.  One potential vulnerability is when a container is allowed to
+          run  applications as the root user, which could allow an attacker to gain  access to sensitive
+          resources. To mitigate this risk, it's recommended to  add a `securityContext` to the container,
+          with the parameter `runAsNonRoot`  set to `true`. This will ensure that the container runs as a non-
+          root user,  limiting the damage that could be caused by any potential attacks. By  adding a
+          `securityContext` to the container in your Kubernetes pod, you can  help to ensure that your
+          containerized applications are more secure and  less vulnerable to privilege escalation attacks.
+          Details: https://sg.run/dgP5
+
+           ▶▶┆ Autofix ▶ spec: securityContext: runAsNonRoot: true #
+           15┆ spec:
+
+    ❯❱ rules.yaml.kubernetes.security.hostpid-pod.hostpid-pod
+          ❰❰ Blocking ❱❱
+          Pod is sharing the host process ID namespace. When paired with ptrace this can be used to escalate
+          privileges outside of the container. Remove the 'hostPID' key to disable this functionality.
+          Details: https://sg.run/708R
+
+           17┆ hostPID: true
+
+    ❯❱ rules.yaml.kubernetes.security.writable-filesystem-container.writable-filesystem-container
+          ❰❰ Blocking ❱❱
+          Container cadvisor is running with a writable root filesystem. This may allow malicious applications
+          to download and run additional payloads, or modify container files. If an application inside a
+          container has to save something temporarily consider using a tmpfs. Add 'readOnlyRootFilesystem:
+          true' to this container to prevent this.
+          Details: https://sg.run/ZePL
+
+           24┆ - name: cadvisor
+
+    ❯❱ rules.yaml.kubernetes.security.allow-privilege-escalation.allow-privilege-escalation
+          ❰❰ Blocking ❱❱
+          In Kubernetes, each pod runs in its own isolated environment with its own set of security policies.
+          However, certain container images may contain `setuid` or `setgid` binaries that could allow an
+          attacker to perform privilege escalation and gain access to sensitive resources. To mitigate this
+          risk, it's recommended to add a `securityContext` to the container in the pod, with the parameter
+          `allowPrivilegeEscalation` set to `false`. This will prevent the container from running any
+          privileged processes and limit the impact of any potential attacks. By adding the
+          `allowPrivilegeEscalation` parameter to your the `securityContext`, you can help to ensure that your
+          containerized applications are more secure and less vulnerable to privilege escalation attacks.
+          Details: https://sg.run/ljp6
+
+           ▶▶┆ Autofix ▶ securityContext: allowPrivilegeEscalation: false #
+           48┆ securityContext:
+
+    ❯❱ rules.yaml.kubernetes.security.privileged-container.privileged-container
+          ❰❰ Blocking ❱❱
+          Container or pod is running in privileged mode. This grants the container the equivalent of root
+          capabilities on the host machine. This can lead to container escapes, privilege escalation, and
+          other security concerns. Remove the 'privileged' key to disable this capability.
+          Details: https://sg.run/Ygr5
+
+           50┆ privileged: true
+
+    k8s/monitoring/grafana.yaml
+    ❯❱ rules.yaml.kubernetes.security.writable-filesystem-container.writable-filesystem-container
+          ❰❰ Blocking ❱❱
+          Container grafana is running with a writable root filesystem. This may allow malicious applications
+          to download and run additional payloads, or modify container files. If an application inside a
+          container has to save something temporarily consider using a tmpfs. Add 'readOnlyRootFilesystem:
+          true' to this container to prevent this.
+          Details: https://sg.run/ZePL
+
+           38┆ - name: grafana
+
+    k8s/monitoring/node-exporter.yaml
+    ❯❱ rules.yaml.kubernetes.security.hostnetwork-pod.hostnetwork-pod
+          ❰❰ Blocking ❱❱
+          Pod may use the node network namespace. This gives the pod access to the loopback device, services
+          listening on localhost, and could be used to snoop on network activity of other pods on the same
+          node. Remove the 'hostNetwork' key to disable this functionality.
+          Details: https://sg.run/E51A
+
+           17┆ hostNetwork: true
+
+    ❯❱ rules.yaml.kubernetes.security.hostpid-pod.hostpid-pod
+          ❰❰ Blocking ❱❱
+          Pod is sharing the host process ID namespace. When paired with ptrace this can be used to escalate
+          privileges outside of the container. Remove the 'hostPID' key to disable this functionality.
+          Details: https://sg.run/708R
+
+           18┆ hostPID: true
+
+    k8s/monitoring/prometheus.yaml
+    ❯❱ rules.yaml.kubernetes.security.writable-filesystem-container.writable-filesystem-container
+          ❰❰ Blocking ❱❱
+          Container prometheus is running with a writable root filesystem. This may allow malicious
+          applications to download and run additional payloads, or modify container files. If an application
+          inside a container has to save something temporarily consider using a tmpfs. Add
+          'readOnlyRootFilesystem: true' to this container to prevent this.
+          Details: https://sg.run/ZePL
+
+          228┆ - name: prometheus
+
+    k8s/postgres-deployment.yaml
+    ❯❱ rules.yaml.kubernetes.security.writable-filesystem-container.writable-filesystem-container
+          ❰❰ Blocking ❱❱
+          Container postgres is running with a writable root filesystem. This may allow malicious applications
+          to download and run additional payloads, or modify container files. If an application inside a
+          container has to save something temporarily consider using a tmpfs. Add 'readOnlyRootFilesystem:
+          true' to this container to prevent this.
+          Details: https://sg.run/ZePL
+
+           26┆ - name: postgres
+
+    scripts/flyway-repair.yaml
+    ❯❱ rules.yaml.kubernetes.security.writable-filesystem-container.writable-filesystem-container
+          ❰❰ Blocking ❱❱
+          Container flyway is running with a writable root filesystem. This may allow malicious applications
+          to download and run additional payloads, or modify container files. If an application inside a
+          container has to save something temporarily consider using a tmpfs. Add 'readOnlyRootFilesystem:
+          true' to this container to prevent this.
+          Details: https://sg.run/ZePL
+
+           17┆ - name: flyway
+
+
+
+┌──────────────┐
+│ Scan Summary │
+└──────────────┘
+✅ Scan completed successfully.
+ • Findings: 16 (16 blocking)
+ • Rules run: 11
+ • Targets scanned: 24
+ • Parsed lines: ~100.0%
+ • No ignore information available
+Ran 11 rules on 24 files: 16 findings.
+Exit code: 0

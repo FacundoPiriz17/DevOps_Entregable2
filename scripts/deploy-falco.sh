@@ -36,29 +36,31 @@ kubectl get nodes
 echo ""
 echo "Actualizando el repositorio de Helm con Falco..."
 
-helm repo add falcosecurity 
-https://falcosecurity.github.io/charts 
---force-update
+helm repo add falcosecurity https://falcosecurity.github.io/charts --force-update
 
-helm repo update
+helm repo update falcosecurity
 
 echo ""
 echo "Instalando/actualizando Falco..."
 
-helm upgrade --install "$RELEASE_NAME" "$CHART" 
---version "$CHART_VERSION" 
---namespace "$NAMESPACE" 
---create-namespace 
---values "$VALUES_FILE" 
---wait 
+mkdir -p "$PROJECT_ROOT/.tmp/security-reports"
+helm template "$RELEASE_NAME" "$CHART" --version "$CHART_VERSION" \
+  --namespace "$NAMESPACE" --values "$VALUES_FILE" > "$PROJECT_ROOT/.tmp/security-reports/falco-rendered.yaml"
+
+helm upgrade --install "$RELEASE_NAME" "$CHART" \
+--version "$CHART_VERSION" \
+--namespace "$NAMESPACE" \
+--create-namespace \
+--values "$VALUES_FILE" \
+--wait \
 --timeout 5m
 
 echo ""
 echo "Esperando Falco DaemonSet..."
 
-kubectl rollout status daemonset/falco 
--n "$NAMESPACE" 
---timeout=180s
+kubectl rollout status daemonset/falco \
+-n "$NAMESPACE" \
+--timeout=300s
 
 echo ""
 echo "Falco pods:"

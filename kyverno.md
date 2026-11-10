@@ -3,7 +3,7 @@
 Esta parte del entregable incorpora tres políticas de admisión para impedir
 imágenes `latest`, exigir recursos y evitar contenedores root. Las políticas
 están en modo **Enforce**: Kubernetes rechaza las solicitudes que incumplen las
-reglas. Los resultados reales se guardan en `reports/kyverno-validation.txt`
+reglas. Los resultados se guardan en `reports/kyverno-validation-post-mitigacion.txt`
 y `reports/kubelinter.txt`.
 
 ## Archivos
@@ -26,10 +26,10 @@ despliegue junto con la aplicación o confundirlos con los manifiestos analizado
 
 Se utilizan `ClusterPolicy` de `kyverno.io/v1`, compatibles con Kyverno 1.19.2.
 Esta versión conserva su soporte, aunque declara estas API obsoletas.
-`background: true` habilita la evaluación de recursos existentes para informes;
-esto no elimina ni reinicia los Pods que ya existían. Con
-`allowExistingViolations: false`, sus futuras modificaciones también deben
-cumplir las políticas.
+`background: true` se conserva en las políticas de imágenes y recursos. La
+política sin root usa `background: false` porque comprueba la identidad de la
+solicitud de admisión. Las tres mantienen **Enforce** y
+`allowExistingViolations: false`; no se desactivan para desplegar Falco.
 
 Las reglas cubren todos los namespaces de aplicaciones, sin depender de un
 label de habilitación. Se excluyen `kube-system`, `kube-public`, `kube-node-lease`
@@ -99,30 +99,34 @@ con configuración root puede crearse, pero sus Pods serán rechazados y el
 Deployment no conseguirá réplicas disponibles. La validación del script extrae
 los Pod templates para comprobar también este caso en los manifiestos reales.
 
-### Excepción aprobada para cAdvisor
+### Excepciones aprobadas para cAdvisor y Falco
 
-Se conserva cAdvisor para mantener las métricas de red del entregable anterior.
+cAdvisor recolecta las métricas de red de los Pods.
 Necesita observar los procesos, namespaces de red y runtime del nodo, por lo que
-su manifiesto mantiene UID 0, `privileged: true`, `hostPID` y montajes del host.
+mantiene UID 0, `privileged: true`, `hostPID` y montajes del host. Falco utiliza
+`modern_ebpf` con privilegios para observar los eventos del nodo.
 
-La única excepción adicional a la regla sin root exige simultáneamente:
+La excepción de la regla sin root exige que el Pod haya sido creado por la
+identidad autenticada `system:serviceaccount:kube-system:daemon-set-controller`
+y que también coincidan estas condiciones:
 
-- Namespace `default`.
-- OwnerReference con `kind: DaemonSet`, `controller: true` y nombre
-  `playhub-cadvisor-network`.
-- Label `app: playhub-cadvisor-network`.
+| Componente | Namespace | Condiciones adicionales |
+| --- | --- | --- |
+| cAdvisor | `default` | OwnerReference DaemonSet `playhub-cadvisor-network` y label `app=playhub-cadvisor-network`. |
+| Falco | `falco` | OwnerReference DaemonSet `falco` y ServiceAccount `falco`. |
 
-Un Pod que solo copie el label sigue siendo rechazado. La excepción no afecta
-las reglas de imágenes ni recursos. Si se despliega cAdvisor en otro namespace,
-será rechazado hasta revisar explícitamente este alcance.
+Los labels y ownerReferences por sí solos no autentican al creador. Se comprobó
+que un Pod de aplicación que imita esos metadatos sigue siendo rechazado.
+Las reglas de imágenes y recursos también se aplican a Falco. El contenedor
+principal tiene recursos explícitos; el initContainer y el sidecar falcoctl
+también los declaran y ejecutan con UID 1000, sin escalada de privilegios.
 
-Los metadatos de propietario no constituyen una frontera de autenticación:
-alguien con permisos para crear Pods puede intentar imitarlos. Esta excepción
-se acepta para el laboratorio administrado por el equipo. En un entorno
-compartido debe limitarse por RBAC quién puede crear Pods y modificar workloads
-de infraestructura y políticas; una alternativa es aislar la infraestructura en
-un namespace administrado. No existe una excepción general para cualquier Pod
-privilegiado o para todos los componentes de monitoreo.
+Esta identidad corresponde al Minikube probado, configurado con
+`--use-service-account-credentials=true`. En otro clúster debe verificarse antes
+de adaptar la excepción. El namespace `falco`, las políticas y los permisos de
+impersonación quedan reservados a los administradores del laboratorio; no se
+conceden a usuarios de aplicaciones. No se afirma que estos componentes
+privilegiados cumplan la regla sin root.
 
 ## Instalación y ejecución
 
@@ -146,6 +150,8 @@ docker desktop start
 minikube start --driver=docker
 kubectl config current-context
 .\scripts\install-kyverno.ps1
+.\scripts\deploy.ps1 -DeployGreen
+.\scripts\deploy-falco.ps1
 .\scripts\validate-kyverno.ps1
 .\scripts\lint-kubernetes.ps1
 ```
@@ -158,7 +164,7 @@ políticas indiquen `Ready`.
 ## Validación y evidencia
 
 El script guarda los comandos, respuestas del API server, códigos de salida y
-comprobaciones en `reports/kyverno-validation.txt`. Un rechazo solo cuenta como
+comprobaciones en `reports/kyverno-validation-post-mitigacion.txt`. Un rechazo solo cuenta como
 correcto si proviene del webhook y menciona la política esperada; un error de
 conexión, sintaxis o descarga no se considera evidencia de bloqueo.
 
@@ -169,8 +175,9 @@ proyecto y la excepción de cAdvisor. También se comprueba el subrecurso real
 `pods/ephemeralcontainers` con operaciones `dryRun=All`.
 
 Para comprobar los Pod templates sin instalar toda la aplicación, se utiliza
-el ServiceAccount `default` en los Pods sintéticos de prueba y se incluyen los
-metadatos de propietario de los DaemonSets. Es una prueba de admisión de sus
+el ServiceAccount `default` en los Pods de aplicación de prueba. El template
+de Falco conserva su ServiceAccount y los templates de infraestructura se
+comprueban impersonando la identidad del controlador de DaemonSets. Es una prueba de admisión de sus
 imágenes, recursos y contexto de seguridad; no verifica la construcción de las
 imágenes, la disponibilidad de ConfigMaps/PVC ni el arranque de PlayHub.
 
@@ -196,20 +203,21 @@ espera a que esté `Ready`, ejecuta `id -u` y verifica el valor **1000**. Al
 terminar elimina únicamente el Pod válido que creó; deja el namespace de pruebas
 para repetir la demo. Si ese Pod ya existe, falla sin sobrescribirlo.
 
-La evidencia entregada corresponde a la ejecución del script, no a salidas de
-ejemplo: **38 comprobaciones correctas**, incluyendo los 13 Pod templates del
-proyecto, el rechazo real del Pod inválido y la ejecución del válido con UID
-1000. Para repetir la demostración:
+El 10 de noviembre de 2026 se generó el reporte de validación con
+**45 comprobaciones correctas**. Incluye el template de Falco, los cuatro Pods
+auxiliares y el rechazo de metadatos de infraestructura imitados. Se verificó
+el rechazo real del Pod inválido y la ejecución del válido con UID 1000. Para
+repetir la demostración:
 
 ```powershell
 .\scripts\validate-kyverno.ps1
-Get-Content reports/kyverno-validation.txt
+Get-Content reports/kyverno-validation-post-mitigacion.txt
 ```
 
 ## Resultado de KubeLinter
 
-El informe solicitado está en **`reports/kubelinter.txt`**, relativo a la raíz
-del repositorio. El script utiliza la imagen oficial fijada y conserva stdout,
+El informe está en **`reports/kubelinter.txt`**, relativo a la raíz del
+repositorio. El script utiliza la imagen oficial fijada y registra stdout,
 stderr y el código de salida. Analiza `k8s/` recursivamente y el Job manual de
 reparación de Flyway, con todos los checks predeterminados y sin supresiones.
 KubeLinter es un análisis estático; el comportamiento de las políticas de
@@ -220,7 +228,8 @@ Kyverno se verifica por separado mediante admisión real.
 Get-Content reports/kubelinter.txt
 ```
 
-La ejecución registra **21 hallazgos** y **exit code 1**.
+El reporte generado el 10 de noviembre de 2026 registra **21 hallazgos**
+y **exit code 1**. Las decisiones sobre cada grupo se detallan a continuación.
 
 | Check | Hallazgos | Decisión y riesgo pendiente |
 | --- | ---: | --- |
@@ -238,17 +247,29 @@ los checks de KubeLinter estén resueltos.
 
 ## Contraste con el reporte de Semgrep
 
-`reports/semgrep_scan.txt` conserva el escaneo original. Después de restringir
-la escalada de privilegios en los cinco contenedores indicados arriba, se
+Después de restringir la escalada de privilegios en los cinco contenedores
+indicados arriba, se
 ejecutó Semgrep 1.182.1 con el conjunto `p/kubernetes` sobre `k8s/` y
 `scripts/flyway-repair.yaml`. La salida completa, sin filtros, se guarda en
 `reports/semgrep-kubernetes.txt`.
 
-El nuevo análisis registra 16 hallazgos: seis corresponden a las excepciones
-conservadas de cAdvisor y node-exporter, y diez a filesystems raíz escribibles.
+Ese análisis detectó 16 hallazgos: seis corresponden a las excepciones
+de cAdvisor y node-exporter, y diez a filesystems raíz escribibles.
 Estos últimos ya aparecían en KubeLinter, pero no en el reporte original de
 Semgrep, que utilizó otro conjunto de reglas. Los cinco hallazgos originales
 por falta de `allowPrivilegeEscalation: false` en Flyway, PostgreSQL, Grafana y
 Prometheus ya no aparecen. El análisis sigue teniendo hallazgos pendientes;
 su código de salida 0 indica que terminó, no que los manifiestos estén libres
 de problemas.
+
+### Análisis posterior a las mitigaciones
+
+El 10 de noviembre de 2026 se generó
+`reports/semgrep-kubernetes-post-mitigacion.txt`: 16 hallazgos, 0 errores
+y exit code 0, utilizando las reglas oficiales de Kubernetes.
+La clasificación blocking no hace fallar el comando sin la opción `--error`.
+
+Los Pods auxiliares de ambos despliegues ahora incluyen requests/limits y
+contexto sin root. Se probó el despliegue con las políticas previamente
+activas, la instalación posterior de Falco y el rechazo de Pods que imitan
+metadatos de infraestructura.

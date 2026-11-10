@@ -94,6 +94,7 @@ class ApiControllerTest {
     @MockitoBean UserService userService;
     @MockitoBean UserAdminService userAdminService;
     @MockitoBean JwtDecoder jwtDecoder;
+    @MockitoBean com.devops.backend.common.metrics.HttpErrorMetrics httpErrorMetrics;
 
     @Test
     void register_isPublicAndRequiresCountryFromNewProfile() throws Exception {
