@@ -39,13 +39,19 @@ if ($LASTEXITCODE -ne 0) {
     throw "No se ha podido añadir a Falco al repositorio."
 }
 
-helm repo update
+helm repo update falcosecurity
 
 if ($LASTEXITCODE -ne 0) {
     throw "No se han podido actualizar los repositorios de Helm."
 }
 
 Write-Host "`nInstalando/actualizando Falco..."
+
+$RenderedFile = Join-Path $ProjectRoot '.tmp/security-reports/falco-rendered.yaml'
+New-Item -ItemType Directory -Force (Split-Path $RenderedFile) | Out-Null
+helm template $ReleaseName $Chart --version $ChartVersion --namespace $Namespace --values $ValuesFile | Set-Content $RenderedFile
+if ($LASTEXITCODE -ne 0) { throw 'No se pudo renderizar el chart de Falco.' }
+Write-Host "Chart renderizado: $RenderedFile"
 
 helm upgrade --install $ReleaseName $Chart `
     --version $ChartVersion `
@@ -61,7 +67,7 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "`nEsperando Falco DaemonSet..."
 
-kubectl rollout status daemonset/falco -n $Namespace --timeout=180s
+kubectl rollout status daemonset/falco -n $Namespace --timeout=300s
 
 if ($LASTEXITCODE -ne 0) {
     throw "Falco DaemonSet no está listo."

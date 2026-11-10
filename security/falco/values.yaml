@@ -9,3 +9,65 @@ tty: true
 
 controller:
   kind: daemonset
+
+# Chart 9.2.2 fija Falco y falcoctl; se declaran tambien en el proyecto.
+image:
+  tag: "0.45.2"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+
+falcoctl:
+  image:
+    tag: "0.14.3"
+  artifact:
+    install:
+      env:
+        - name: HOME
+          value: /artifactstate
+        - name: XDG_CACHE_HOME
+          value: /artifactstate/.cache
+      resources:
+        requests:
+          cpu: 20m
+          memory: 32Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+    follow:
+      env:
+        - name: HOME
+          value: /artifactstate
+        - name: XDG_CACHE_HOME
+          value: /artifactstate/.cache
+      resources:
+        requests:
+          cpu: 20m
+          memory: 32Mi
+        limits:
+          cpu: 200m
+          memory: 128Mi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+
+podSecurityContext:
+  fsGroup: 1000
+
+falco:
+  json_output: true
+  json_include_output_fields_property: true

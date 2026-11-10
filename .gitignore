@@ -5,8 +5,11 @@
 
 # Logs
 *.log
+!reports/falco-event.log
 logs/
 .tmp/
+__pycache__/
+*.pyc
 
 # OS
 Thumbs.db

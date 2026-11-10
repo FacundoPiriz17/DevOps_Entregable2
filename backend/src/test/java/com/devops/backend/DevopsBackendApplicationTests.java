@@ -38,7 +38,11 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @Testcontainers
-@SpringBootTest
+@SpringBootTest(properties = {
+        "admin.bootstrap.email=admin@devops.local",
+        "admin.bootstrap.password=IntegrationTestOnly123!",
+        "jwt.secret=integration-test-only-secret-key-at-least-forty-eight-bytes-long"
+})
 class DevopsBackendApplicationTests {
 
     @Container
@@ -66,9 +70,9 @@ class DevopsBackendApplicationTests {
     }
 
     @Test
-    void flywayCreatesTheSchemaAndCompleteArtwork() {
+    void flywayCreatesTheSchemaAndSeededArtwork() {
         Long migrations = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM flyway_schema_history WHERE version IN ('1', '2', '3') AND success = TRUE",
+                "SELECT COUNT(*) FROM flyway_schema_history WHERE version IN ('1', '2') AND success = TRUE",
                 Long.class);
         Long domainTables = jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM information_schema.tables
@@ -94,11 +98,12 @@ class DevopsBackendApplicationTests {
                 ) complete_artwork
                 """, Long.class);
 
-        assertThat(migrations).isEqualTo(3L);
+        assertThat(migrations).isEqualTo(2L);
         assertThat(domainTables).isEqualTo(12L);
         assertThat(enumTypes).isEqualTo(3L);
         assertThat(demoGames).isEqualTo(12L);
-        assertThat(gamesWithCompleteArtwork).isEqualTo(12L);
+        // V2 contiene doce juegos; cinco tienen tanto portada como banner.
+        assertThat(gamesWithCompleteArtwork).isEqualTo(5L);
     }
 
     @Test

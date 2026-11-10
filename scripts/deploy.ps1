@@ -283,13 +283,19 @@ function Import-ClusterImages {
         }
         "minikube" {
             Assert-Command -Name "minikube"
-
-            foreach ($image in $Images) {
-                & minikube -p $ResolvedName image load $image
-
+            $archiveDirectory = Join-Path (Split-Path -Parent $PSScriptRoot) '.tmp'
+            New-Item -ItemType Directory -Force $archiveDirectory | Out-Null
+            $archive = Join-Path $archiveDirectory "playhub-images-$([guid]::NewGuid().ToString('N')).tar"
+            try {
+                # Un archivo nuevo con todos los tags evita la cache por nombre
+                # de Minikube y conserva los alias del mismo artefacto Docker.
+                Invoke-Docker -Arguments (@('save', '--output', $archive) + $Images)
+                & minikube -p $ResolvedName image load --overwrite=true $archive
                 if ($LASTEXITCODE -ne 0) {
-                    throw "No se pudo cargar '$image' en Minikube '$ResolvedName'."
+                    throw "No se pudieron cargar las imagenes en Minikube '$ResolvedName'."
                 }
+            } finally {
+                if (Test-Path -LiteralPath $archive -PathType Leaf) { Remove-Item -LiteralPath $archive }
             }
         }
         "k3d" {
@@ -315,8 +321,20 @@ function Test-ClusterImage {
         [int]$Index
     )
 
-    $checkPod = "playhub-image-check-$Index-$PID"
-    & kubectl delete pod $checkPod --ignore-not-found=true --wait=false 2>$null | Out-Null
+    $checkPod = "playhub-image-check-$Index-$([guid]::NewGuid().ToString('N').Substring(0, 12))"
+    $createdCheckPod = $false
+    $overrides = @{
+        spec = @{
+            automountServiceAccountToken = $false
+            securityContext = @{ runAsNonRoot = $true; runAsUser = 1000; runAsGroup = 1000 }
+            containers = @(@{
+                name = $checkPod; image = $Image; imagePullPolicy = 'Never'
+                command = @('/bin/sh', '-c', 'id -u; test "$(id -u)" -ne 0')
+                resources = @{ requests = @{ cpu = '10m'; memory = '16Mi' }; limits = @{ cpu = '100m'; memory = '64Mi' } }
+                securityContext = @{ allowPrivilegeEscalation = $false; capabilities = @{ drop = @('ALL') } }
+            })
+        }
+    } | ConvertTo-Json -Depth 10 -Compress
 
     try {
         Invoke-Kubectl -Arguments @(
@@ -326,12 +344,14 @@ function Test-ClusterImage {
             "--image-pull-policy=Never",
             "--labels=app=playhub-image-check",
             "--restart=Never",
+            "--overrides=$overrides",
             "--command",
             "--",
             "/bin/sh",
             "-c",
             "exit 0"
         )
+        $createdCheckPod = $true
 
         for ($attempt = 0; $attempt -lt 45; $attempt++) {
             $phase = Get-KubectlOutput -Arguments @(
@@ -379,7 +399,9 @@ function Test-ClusterImage {
         throw "Tiempo agotado comprobando la imagen '$Image'."
     }
     finally {
-        & kubectl delete pod $checkPod --ignore-not-found=true --wait=false 2>$null | Out-Null
+        if ($createdCheckPod) {
+            Invoke-Kubectl -Arguments @('delete', 'pod', $checkPod, '--ignore-not-found=true', '--wait=false')
+        }
     }
 }
 
@@ -638,25 +660,9 @@ try {
         )
 
         if ($DeployGreen) {
-            Write-Host "Construyendo imagenes Green..."
-            Invoke-Docker -Arguments @(
-                "build",
-                "--file",
-                "backend/Dockerfile.prod",
-                "--tag",
-                "playhub-backend:v2.0",
-                "backend"
-            )
-            Invoke-Docker -Arguments @(
-                "build",
-                "--build-arg",
-                "NEXT_PUBLIC_API_URL=$FrontendApiUrl",
-                "--file",
-                "frontend/Dockerfile.prod",
-                "--tag",
-                "playhub-frontend:v2.0",
-                "frontend"
-            )
+            Write-Host "Etiquetando las mismas imagenes corregidas para Green..."
+            Invoke-Docker -Arguments @('tag', 'playhub-backend:v1.0', 'playhub-backend:v2.0')
+            Invoke-Docker -Arguments @('tag', 'playhub-frontend:v1.0', 'playhub-frontend:v2.0')
         }
     }
     else {

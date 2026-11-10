@@ -171,9 +171,18 @@ load_images() {
       ;;
     minikube)
       require_command minikube
-      for image in "${images[@]}"; do
-        minikube -p "$resolved_cluster_name" image load "$image"
-      done
+      require_command docker
+      mkdir -p "$project_root/.tmp"
+      local archive_directory archive import_status=0
+      archive_directory="$(mktemp -d "$project_root/.tmp/image-import.XXXXXX")"
+      archive="$archive_directory/images.tar"
+      docker save --output "$archive" "${images[@]}" || import_status=$?
+      if [[ "$import_status" -eq 0 ]]; then
+        minikube -p "$resolved_cluster_name" image load --overwrite=true "$archive" || import_status=$?
+      fi
+      rm -f "$archive"
+      rmdir "$archive_directory"
+      return "$import_status"
       ;;
     k3d)
       require_command k3d
@@ -198,19 +207,18 @@ trap cleanup_image_checks EXIT
 check_cluster_image() {
   local image="$1"
   local index="$2"
-  local pod="playhub-image-check-${index}-$$"
+  local pod="playhub-image-check-${index}-$$-${RANDOM}"
   local phase=""
   local waiting_reason=""
-
-  image_check_pods+=("$pod")
-  kubectl delete pod "$pod" --ignore-not-found=true --wait=false >/dev/null 2>&1 || true
 
   kubectl run "$pod" \
     --image="$image" \
     --image-pull-policy=Never \
     --labels=app=playhub-image-check \
     --restart=Never \
+    --overrides="{\"spec\":{\"automountServiceAccountToken\":false,\"securityContext\":{\"runAsNonRoot\":true,\"runAsUser\":1000,\"runAsGroup\":1000},\"containers\":[{\"name\":\"$pod\",\"image\":\"$image\",\"imagePullPolicy\":\"Never\",\"command\":[\"/bin/sh\",\"-c\",\"id -u; test \\\"\$(id -u)\\\" -ne 0\"],\"resources\":{\"requests\":{\"cpu\":\"10m\",\"memory\":\"16Mi\"},\"limits\":{\"cpu\":\"100m\",\"memory\":\"64Mi\"}},\"securityContext\":{\"allowPrivilegeEscalation\":false,\"capabilities\":{\"drop\":[\"ALL\"]}}}]}}" \
     --command -- sh -c 'exit 0'
+  image_check_pods+=("$pod")
 
   for _ in {1..45}; do
     phase="$(kubectl get pod "$pod" -o jsonpath='{.status.phase}' 2>/dev/null || true)"
@@ -526,18 +534,9 @@ if [[ "$skip_build" == false ]]; then
     frontend
 
   if [[ "$deploy_green" == true ]]; then
-    echo "Construyendo imagenes Green..."
-
-    docker build \
-      --file backend/Dockerfile.prod \
-      --tag playhub-backend:v2.0 \
-      backend
-
-    docker build \
-      --build-arg "NEXT_PUBLIC_API_URL=$frontend_api_url" \
-      --file frontend/Dockerfile.prod \
-      --tag playhub-frontend:v2.0 \
-      frontend
+    echo "Etiquetando las mismas imagenes corregidas para Green..."
+    docker tag playhub-backend:v1.0 playhub-backend:v2.0
+    docker tag playhub-frontend:v1.0 playhub-frontend:v2.0
   fi
 else
   echo "Aviso: se omitio la construccion de imagenes." >&2
