@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "playhub.fullname" . }}-test-connection
+  labels:
+    {{- include "playhub.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: check
+      image: busybox:1.37.0
+      imagePullPolicy: IfNotPresent
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "Backend (readiness)..."
+          wget -q -O- http://{{ include "playhub.fullname" . }}-backend:{{ .Values.backend.service.port }}/actuator/health/readiness
+          echo
+          echo "Frontend (/login)..."
+          wget -q -O /dev/null http://{{ include "playhub.fullname" . }}-frontend:{{ .Values.frontend.service.port }}/login
+          echo "OK"
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop:
+            - ALL
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 100m
+          memory: 64Mi

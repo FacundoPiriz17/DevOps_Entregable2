@@ -1,0 +1,10 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "playhub.fullname" . }}-migration-sql
+  labels:
+    {{- include "playhub.labels" . | nindent 4 }}
+data:
+{{ (.Files.Glob "files/migrations/*.sql").AsConfig | indent 2 }}
+{{- end }}

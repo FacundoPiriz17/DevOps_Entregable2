@@ -1,0 +1,85 @@
+nameOverride: ""
+fullnameOverride: ""
+backend:
+  replicaCount: 1
+  image:
+    repository: playhub-backend
+    tag: v1.0
+    pullPolicy: Never
+  containerPort: 8080
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+frontend:
+  replicaCount: 1
+  image:
+    repository: playhub-frontend
+    tag: v1.0
+    pullPolicy: Never
+  containerPort: 5745
+  service:
+    type: ClusterIP
+    port: 5745
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+postgres:
+  image:
+    repository: postgres
+    tag: 18-alpine
+    pullPolicy: IfNotPresent
+  port: 5432
+  database: devops_db
+  user: postgres
+  persistence:
+    enabled: true
+    size: 2Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+migrations:
+  enabled: true
+  image:
+    repository: redgate/flyway
+    tag: "13.4"
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+config:
+  adminEmail: admin@playhub.com
+  corsAllowedOrigins: "http://localhost:5745"
+  cookieSecure: "false"
+secrets:
+  existingSecret: ""
+  dbPassword: "mi_password"
+  jwtSecret: "ChangeThisPlayHubJwtDemoKey2026-WithAtLeast32Bytes"
+  adminPassword: "PlayHub123"
+ingress:
+  enabled: false
+  className: nginx
+  host: playhub.local
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "playhub.fullname" . }}-config
+  labels:
+    {{- include "playhub.labels" . | nindent 4 }}
+data:
+  DB_URL: {{ printf "jdbc:postgresql://%s-db:%v/%s" (include "playhub.fullname" .) .Values.postgres.port .Values.postgres.database | quote }}
+  DB_NAME: {{ .Values.postgres.database | quote }}
+  DB_USER: {{ .Values.postgres.user | quote }}
+  ADMIN_EMAIL: {{ .Values.config.adminEmail | quote }}
+  CORS_ALLOWED_ORIGINS: {{ .Values.config.corsAllowedOrigins | quote }}
+  COOKIE_SECURE: {{ .Values.config.cookieSecure | quote }}
+  SPRING_FLYWAY_ENABLED: "false"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  MANAGEMENT_ENDPOINT_HEALTH_GROUP_READINESS_INCLUDE: "readinessState,db"

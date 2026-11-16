@@ -1,0 +1,55 @@
+backend:
+  replicaCount: 2
+  image:
+    tag: v1.0
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+frontend:
+  replicaCount: 2
+  image:
+    tag: v1.0-prod
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+postgres:
+  persistence:
+    enabled: true
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+config:
+  corsAllowedOrigins: "http://playhub.local"
+  cookieSecure: "false"
+
+secrets:
+  dbPassword: ""
+  jwtSecret: ""
+  adminPassword: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  host: playhub.local
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""
