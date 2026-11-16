@@ -1,4 +1,104 @@
-# Entregable 4: Kyverno y Falco
+# Entregable 4: Semgrep, Snyk, Kyverno y Falco:
+
+Seguridad en Entregable 4:
+
+Se debe automiatizar todo el análisis después en la pipeline, por lo tanto se ha de guardar comandos en el readme. 
+
+Semgrep (Usando Docker)
+
+Runnear semgrep-report.txt
+
+Las vulnerabilidades no deben jsutifcarse de vuelta
+
+//Scanneo normal
+
+MSYS_NO_PATHCONV=1 docker run -e SEMGREP_APP_TOKEN=dd3858f4998b5d3614907c66e79817b2f755b22999f79322b52713c75867ab0b --rm -v "$(pwd -W):/src" -w /src semgrep/semgrep semgrep ci > reports/semgrep-report.txt --verbose
+
+
+Reglas utilizadas: p/java  p/spring p/react p/javascript p/owasp-top-ten
+
+//Scanneo con reglas:
+MSYS_NO_PATHCONV=1 docker run --rm -e NO_COLOR=1 -v "$(pwd -W):/src" -w /src semgrep/semgrep semgrep scan --config p/java --config p/findsecbugs --config p/react --config p/javascript --config p/owasp-top-ten --exclude node_modules --exclude logs --exclude reports --text --output reports/semgrep-report.txt
+
+Vulnerabilidad 1:
+backend/src/main/resources/application.properties
+    ❯❱ java.spring.security.audit.spring-actuator-non-health-enabled.spring-actuator-dangerous-endpoints-enabled
+          ❰❰ Blocking ❱❱
+          Spring Boot Actuators "health,prometheus" are enabled. Depending on the actuators, this can pose a
+          significant security risk. Please double-check if the actuators are needed and properly secured.  
+          Details: https://sg.run/5g23                                                                      
+                                                                                                            
+           27┆ management.endpoints.web.exposure.include=health,prometheus
+
+Es requerida dado que habilita el monitoreo con prometehues, es para medir la latencia de las solicitudes 
+
+Vulnerabilidad 2:
+ k8s/monitoring/cadvisor-network.yaml
+    ❯❱ yaml.kubernetes.security.allow-privilege-escalation.allow-privilege-escalation
+          ❰❰ Blocking ❱❱
+          In Kubernetes, each pod runs in its own isolated environment with its own set of security policies. 
+          However, certain container images may contain `setuid` or `setgid` binaries that could allow an     
+          attacker to perform privilege escalation and gain access to sensitive resources. To mitigate this   
+          risk, it's recommended to add a `securityContext` to the container in the pod, with the parameter   
+          `allowPrivilegeEscalation` set to `false`. This will prevent the container from running any         
+          privileged processes and limit the impact of any potential attacks. By adding the                   
+          `allowPrivilegeEscalation` parameter to your the `securityContext`, you can help to ensure that your
+          containerized applications are more secure and less vulnerable to privilege escalation attacks.     
+          Details: https://sg.run/ljp6                                                                        
+                                                                                                              
+           ▶▶┆ Autofix ▶ securityContext: allowPrivilegeEscalation: false #
+           48┆ securityContext:
+
+Se implemento la flag de "allowPrivilegeEscalation: False" Para mitigar la vulnerabildad. De esta forma se debería evitar el escalado de privilegios.
+
+Snyk:
+
+Instalation: npm install snyk -g
+
+Comando de test: snyk test --all-projects --exclude=node_modules,reports > reports/snyk-report.txt
+
+Se encontraron 2 vulnerabilidades criticas: 
+
+ ✗ [CRITICAL] Deserialization of Untrusted Data
+   Finding ID: SNYK-JAVA-COMFASTERXMLJACKSONCORE-21761837
+   Info: https://snyk.io/vuln/SNYK-JAVA-COMFASTERXMLJACKSONCORE-21761837
+   Introduced by: com.fasterxml.jackson.core:jackson-databind
+   Introduced through: com.devops:devops_backend@0.0.1-SNAPSHOT > io.jsonwebtoken:jjwt-jackson@0.12.6 > com.fasterxml.jackson.core:jackson-databind@2.21.7
+
+ ✗ [CRITICAL] Deserialization of Untrusted Data
+   Finding ID: SNYK-JAVA-TOOLSJACKSONCORE-21761838
+   Info: https://snyk.io/vuln/SNYK-JAVA-TOOLSJACKSONCORE-21761838
+   Introduced by: tools.jackson.core:jackson-databind
+   Introduced through: com.devops:devops_backend@0.0.1-SNAPSHOT > org.flywaydb:flyway-database-postgresql@12.4.0 > org.flywaydb:flyway-core@12.4.0 > tools.jackson.core:jackson-databind@3.1.7
+
+Vulnerabilidad 1: Jackson 2.21.7 (vía jjwt-jackson), CRITICAL
+
+Decisión: Mitigada, actualizando a jackson-databind 2.21.8.
+
+Justificación:
+
+Permite deserialización de datos no confiables, que en el peor caso lleva a ejecución remota de código (RCE) y compromete la confidencialidad, integridad y disponibilidad del servidor.
+La librería procesa el contenido de los tokens JWT, que llegan desde clientes externos. Por lo tanto, existe una ruta por la que un atacante podría enviar datos manipulados.
+Existe una versión corregida (2.21.8) del mismo ciclo de versiones, por lo que el cambio es de bajo riesgo y no rompe compatibilidad.
+El costo de mitigar (una línea en el pom.xml) es mucho menor que el impacto de una explotación.
+
+Vulnerabilidad 2: Jackson 3.1.7 (vía Flyway), CRITICAL
+
+Decisión: Mitigada, actualizando Flyway a 13.5.0 (o, si la actualización causa incompatibilidades, aceptada con justificación).
+
+Justificación:
+
+Tiene la misma severidad y el mismo tipo de falla que la anterior, y Snyk indica una actualización directa que la corrige.
+Mantener dependencias actualizadas es una buena práctica DevSecOps y evita acumular deuda de seguridad.
+Si no se puede actualizar: Flyway solo lee los archivos de migración propios del proyecto durante el arranque, no datos de usuarios, por lo que la superficie de ataque es mínima. El riesgo se documenta, se acepta temporalmente y se revisa en el próximo escaneo.
+
+Kyverno:
+
+Se implemento la 4ta policy en kyverno. La misma consiste en bloquear la escalada de privilegios para los contenedores que lo intenten. 
+
+Se hace una excepción para cAdvisor y falco, de forma que se siga pudiendo utilizar el monitoreo. 
+
+Se actualizaron los scripts de install-kyverno.ps1 y validate-kyverno.ps1 para incorporar la nueva funcionalidad.
 
 ## Objetivo
 
