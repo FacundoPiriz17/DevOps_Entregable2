@@ -23,7 +23,13 @@ spec:
               (object.metadata.namespace == 'falco' &&
                o.kind == 'DaemonSet' && o.name == 'falco' &&
                has(object.spec.serviceAccountName) &&
-               object.spec.serviceAccountName == 'falco')
+               object.spec.serviceAccountName == 'falco') ||
+              (o.kind == 'DaemonSet' && o.name.endsWith('-cadvisor-network') &&
+               has(object.spec.serviceAccountName) && object.spec.serviceAccountName == o.name &&
+               has(object.metadata.labels) && 'app' in object.metadata.labels &&
+               object.metadata.labels['app'] == o.name &&
+               has(object.metadata.annotations) && 'playhub.dev/privileged-monitor' in object.metadata.annotations &&
+               object.metadata.annotations['playhub.dev/privileged-monitor'] == 'cadvisor-network')
             )
           )
         )

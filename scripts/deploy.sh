@@ -9,6 +9,8 @@ skip_build=false
 skip_image_load=false
 frontend_api_url="http://localhost:8080"
 no_port_forward=false
+skip_security=false
+adopt_security=false
 
 usage() {
   printf '%s\n' \
@@ -22,6 +24,8 @@ usage() {
     "  --skip-build                No reconstruye las imagenes." \
     "  --skip-image-load           No importa las imagenes al runtime del cluster." \
     "  --no-port-forward           No abre backend, frontend, Prometheus ni Grafana." \
+    "  --skip-security             Usa Kyverno/Falco compartidos; no los instala ni modifica." \
+    "  --adopt-security            Registra la instalacion compatible existente del proyecto." \
     "  -h, --help                  Muestra esta ayuda."
 }
 
@@ -67,6 +71,14 @@ while (($# > 0)); do
       no_port_forward=true
       shift
       ;;
+    --skip-security)
+      skip_security=true
+      shift
+      ;;
+    --adopt-security)
+      adopt_security=true
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -78,6 +90,11 @@ while (($# > 0)); do
       ;;
   esac
 done
+
+if [[ "$skip_security" == true && "$adopt_security" == true ]]; then
+  echo '--skip-security y --adopt-security son opciones excluyentes.' >&2
+  exit 2
+fi
 
 case "$cluster_type" in
   auto|docker-desktop|kind|minikube|k3d|none)
@@ -328,7 +345,7 @@ stop_tracked_port_forward() {
     pid="$(cat "$pid_file")"
 
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-      kill "$pid" 2>/dev/null || true
+      if [[ "$(process_name_of "$pid")" == *kubectl* ]]; then kill "$pid" 2>/dev/null || true; fi
     fi
 
     rm -f "$pid_file"
@@ -474,6 +491,15 @@ if [[ "$resolved_cluster_type" == "minikube" ]]; then
 fi
 
 kubectl cluster-info
+
+if [[ "$skip_security" == true ]]; then
+  echo "Se usa la seguridad existente del cluster (--skip-security)."
+else
+  source "$script_dir/lib/security-stack.sh"
+  security_args=()
+  if [[ "$adopt_security" == true ]]; then security_args+=(--adopt-existing); fi
+  initialize_playhub_security "$project_root" "${security_args[@]}"
+fi
 
 images=(
   "playhub-backend:v1.0"

@@ -4,10 +4,13 @@ param(
 
     [switch]$RemoveImages,
 
+    [switch]$RemoveSecurity,
+
     [string]$MinikubeProfile = "minikube"
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'lib/native.ps1')
 
 function Assert-Command {
     param(
@@ -29,9 +32,10 @@ function Invoke-KubectlDelete {
         [string[]]$Names
     )
 
-    & kubectl delete $Kind @Names -n $namespace --ignore-not-found=true --wait=true
-
-    if ($LASTEXITCODE -ne 0) {
+    $result = Invoke-PlayHubNative -Command 'kubectl' -Arguments (@('delete', $Kind) + $Names + @('-n', $namespace, '--ignore-not-found=true', '--wait=true'))
+    if ($result.Output) { Write-Host $result.Output }
+    if ($result.ErrorOutput) { Write-Host $result.ErrorOutput }
+    if ($result.ExitCode -ne 0) {
         throw "No se pudieron eliminar los recursos $Kind de PlayHub."
     }
 }
@@ -56,7 +60,7 @@ function Stop-TrackedPortForward {
     if (-not [string]::IsNullOrWhiteSpace($processId)) {
         $existing = Get-Process -Id $processId -ErrorAction SilentlyContinue
 
-        if ($null -ne $existing) {
+        if ($null -ne $existing -and $existing.ProcessName -like '*kubectl*') {
             Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
         }
     }
@@ -68,15 +72,17 @@ Assert-Command -Name "kubectl"
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
-$context = (& kubectl config current-context)
+$result = Invoke-PlayHubNative -Command 'kubectl' -Arguments @('config', 'current-context')
+$context = $result.Output
 
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($context)) {
+if ($result.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($context)) {
     throw "No se pudo determinar el contexto actual de Kubernetes."
 }
 
-$namespace = (& kubectl config view --minify -o "jsonpath={..namespace}")
+$result = Invoke-PlayHubNative -Command 'kubectl' -Arguments @('config', 'view', '--minify', '-o', 'jsonpath={..namespace}')
+$namespace = $result.Output
 
-if ($LASTEXITCODE -ne 0) {
+if ($result.ExitCode -ne 0) {
     throw "No se pudo determinar el namespace actual de Kubernetes."
 }
 
@@ -96,6 +102,7 @@ else {
 }
 
 $target = "PlayHub en el contexto '$context', namespace '$namespace'"
+if ($RemoveSecurity) { $target += '; incluye Kyverno, sus cuatro politicas y Falco instalados por PlayHub' }
 
 if (-not $PSCmdlet.ShouldProcess($target, "Eliminar los recursos desplegados")) {
     return
@@ -149,29 +156,26 @@ Invoke-KubectlDelete -Kind "configmap" -Names @(
 
 Invoke-KubectlDelete -Kind "rolebinding" -Names @("playhub-prometheus-discovery", "playhub-kube-state-metrics")
 Invoke-KubectlDelete -Kind "role" -Names @("playhub-prometheus-discovery", "playhub-kube-state-metrics")
-Invoke-KubectlDelete -Kind "serviceaccount" -Names @("playhub-prometheus", "playhub-kube-state-metrics")
+Invoke-KubectlDelete -Kind "serviceaccount" -Names @("playhub-prometheus", "playhub-kube-state-metrics", "playhub-cadvisor-network")
 Invoke-KubectlDelete -Kind "clusterrolebinding" -Names @("playhub-prometheus-nodes")
 Invoke-KubectlDelete -Kind "clusterrole" -Names @("playhub-prometheus-nodes")
 
 Invoke-KubectlDelete -Kind "secret" -Names @("playhub-secrets")
 
-$legacyImageCheckPods = @(
-    & kubectl get pods -n $namespace -o name |
-        Where-Object { $_ -like "pod/playhub-image-check-*" }
-)
-
-if ($LASTEXITCODE -ne 0) {
+$result = Invoke-PlayHubNative -Command 'kubectl' -Arguments @('get', 'pods', '-n', $namespace, '-o', 'name')
+if ($result.ExitCode -ne 0) {
     throw "No se pudieron localizar los Pods temporales de comprobacion de imagenes."
 }
+$legacyImageCheckPods = @($result.Output -split "`r?`n" | Where-Object { $_ -like 'pod/playhub-image-check-*' })
 
 if ($legacyImageCheckPods.Count -gt 0) {
-    & kubectl delete @legacyImageCheckPods -n $namespace --ignore-not-found=true --wait=true
+    $result = Invoke-PlayHubNative -Command 'kubectl' -Arguments (@('delete') + $legacyImageCheckPods + @('-n', $namespace, '--ignore-not-found=true', '--wait=true'))
 }
 else {
-    & kubectl delete pod -n $namespace -l "app=playhub-image-check" --ignore-not-found=true --wait=true
+    $result = Invoke-PlayHubNative -Command 'kubectl' -Arguments @('delete', 'pod', '-n', $namespace, '-l', 'app=playhub-image-check', '--ignore-not-found=true', '--wait=true')
 }
 
-if ($LASTEXITCODE -ne 0) {
+if ($result.ExitCode -ne 0) {
     throw "No se pudieron eliminar los Pods temporales de comprobacion de imagenes."
 }
 
@@ -189,7 +193,8 @@ if ($RemoveImages) {
 
     if (Get-Command minikube -ErrorAction SilentlyContinue) {
         foreach ($image in $images) {
-            & minikube -p $MinikubeProfile image rm $image 2>$null
+            $result = Invoke-PlayHubNative -Command 'minikube' -Arguments @('-p', $MinikubeProfile, 'image', 'rm', $image)
+            if ($result.ExitCode -ne 0) { Write-Warning "No se pudo retirar $image de Minikube (puede no existir)." }
         }
     }
     else {
@@ -198,12 +203,21 @@ if ($RemoveImages) {
 
     if (Get-Command docker -ErrorAction SilentlyContinue) {
         foreach ($image in $images) {
-            & docker image rm $image 2>$null
+            $result = Invoke-PlayHubNative -Command 'docker' -Arguments @('image', 'rm', $image)
+            if ($result.ExitCode -ne 0) { Write-Warning "No se pudo retirar $image de Docker (puede no existir)." }
         }
     }
     else {
         Write-Warning "No se encontro docker; no se eliminaron las imagenes locales."
     }
+}
+
+if ($RemoveSecurity) {
+    . (Join-Path $PSScriptRoot 'lib/security-stack.ps1')
+    Remove-PlayHubSecurity -ProjectRoot $projectRoot
+}
+else {
+    Write-Host 'Kyverno y Falco se conservan. -RemoveSecurity retira solo instalaciones registradas por PlayHub.'
 }
 
 Write-Host "Limpieza de PlayHub terminada."

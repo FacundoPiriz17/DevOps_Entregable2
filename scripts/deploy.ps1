@@ -14,10 +14,16 @@ param(
     [ValidatePattern("^https?://")]
     [string]$FrontendApiUrl = "http://localhost:8080",
 
-    [switch]$NoPortForward
+    [switch]$NoPortForward,
+
+    [switch]$SkipSecurity,
+
+    [switch]$AdoptSecurity
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'lib/native.ps1')
+if ($SkipSecurity -and $AdoptSecurity) { throw '-SkipSecurity y -AdoptSecurity son opciones excluyentes.' }
 
 function New-MigrationConfigMapJson {
     param(
@@ -60,11 +66,10 @@ function Invoke-Kubectl {
         [string[]]$Arguments
     )
 
-    & kubectl @Arguments
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Fallo kubectl $($Arguments -join ' ')"
-    }
+    $result = Invoke-PlayHubNative -Command 'kubectl' -Arguments $Arguments
+    if ($result.Output) { Write-Host $result.Output }
+    if ($result.ErrorOutput) { Write-Host $result.ErrorOutput }
+    if ($result.ExitCode -ne 0) { throw 'Fallo kubectl. Revisar el diagnostico anterior.' }
 }
 
 function Get-KubectlOutput {
@@ -73,13 +78,22 @@ function Get-KubectlOutput {
         [string[]]$Arguments
     )
 
-    $output = & kubectl @Arguments
+    $result = Invoke-PlayHubNative -Command 'kubectl' -Arguments $Arguments
+    if ($result.ErrorOutput) { Write-Host $result.ErrorOutput }
+    if ($result.ExitCode -ne 0) { throw 'Fallo kubectl al consultar el cluster.' }
+    return $result.Output.Trim()
+}
 
-    if ($LASTEXITCODE -ne 0) {
-        throw "Fallo kubectl $($Arguments -join ' ')"
+function Invoke-KubectlJson {
+    param([Parameter(Mandatory = $true)][string]$Document)
+    $manifest = [System.IO.Path]::GetTempFileName()
+    try {
+        [System.IO.File]::WriteAllText($manifest, $Document, [System.Text.UTF8Encoding]::new($false))
+        Invoke-Kubectl -Arguments @('apply', '-f', $manifest)
     }
-
-    return ($output -join "`n").Trim()
+    finally {
+        Remove-Item -LiteralPath $manifest -Force -ErrorAction SilentlyContinue -WhatIf:$false -Confirm:$false
+    }
 }
 
 function Test-KubectlResourceExists {
@@ -91,13 +105,12 @@ function Test-KubectlResourceExists {
         [string]$Name
     )
 
-    $resource = & kubectl get $Kind $Name --ignore-not-found=true -o name 2>$null
-
-    if ($LASTEXITCODE -ne 0) {
+    $result = Invoke-PlayHubNative -Command 'kubectl' -Arguments @('get', $Kind, $Name, '--ignore-not-found=true', '-o', 'name')
+    if ($result.ExitCode -ne 0) {
         throw "No se pudo comprobar si existe $Kind/$Name."
     }
 
-    return -not [string]::IsNullOrWhiteSpace(($resource -join "`n").Trim())
+    return -not [string]::IsNullOrWhiteSpace($result.Output)
 }
 
 function Wait-KubernetesJob {
@@ -113,13 +126,7 @@ function Wait-KubernetesJob {
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
 
     while ([DateTimeOffset]::UtcNow -lt $deadline) {
-        $jobJson = & kubectl get job $Name -o json
-
-        if ($LASTEXITCODE -ne 0) {
-            throw "No se pudo consultar el estado de job/$Name."
-        }
-
-        $job = $jobJson | ConvertFrom-Json
+        $job = (Get-KubectlOutput -Arguments @('get', 'job', $Name, '-o', 'json')) | ConvertFrom-Json
         $conditions = @($job.status.conditions)
         $completed = $conditions |
             Where-Object { $_.type -eq "Complete" -and $_.status -eq "True" } |
@@ -158,10 +165,15 @@ function Show-JobDiagnostics {
     )
 
     Write-Warning "Diagnostico de job/${Name}:"
-    & kubectl get job $Name -o wide
-    & kubectl describe job $Name
-    & kubectl get pods -l "job-name=$Name" -o wide
-    & kubectl logs -l "job-name=$Name" --all-containers=true --prefix=true --tail=-1
+    foreach ($arguments in @(
+        @('get', 'job', $Name, '-o', 'wide'), @('describe', 'job', $Name),
+        @('get', 'pods', '-l', "job-name=$Name", '-o', 'wide'),
+        @('logs', '-l', "job-name=$Name", '--all-containers=true', '--prefix=true', '--tail=-1')
+    )) {
+        $result = Invoke-PlayHubNative -Command 'kubectl' -Arguments $arguments
+        if ($result.Output) { Write-Host $result.Output }
+        if ($result.ErrorOutput) { Write-Host $result.ErrorOutput }
+    }
 }
 
 function Invoke-Docker {
@@ -170,11 +182,10 @@ function Invoke-Docker {
         [string[]]$Arguments
     )
 
-    & docker @Arguments
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "Fallo docker $($Arguments -join ' ')"
-    }
+    $result = Invoke-PlayHubNative -Command 'docker' -Arguments $Arguments
+    if ($result.Output) { Write-Host $result.Output }
+    if ($result.ErrorOutput) { Write-Host $result.ErrorOutput }
+    if ($result.ExitCode -ne 0) { throw 'Fallo docker. Revisar el diagnostico anterior.' }
 }
 
 function Resolve-ClusterType {
@@ -275,9 +286,10 @@ function Import-ClusterImages {
         }
         "kind" {
             Assert-Command -Name "kind"
-            & kind load docker-image @Images --name $ResolvedName
-
-            if ($LASTEXITCODE -ne 0) {
+            $result = Invoke-PlayHubNative -Command 'kind' -Arguments (@('load', 'docker-image') + $Images + @('--name', $ResolvedName))
+            if ($result.Output) { Write-Host $result.Output }
+            if ($result.ErrorOutput) { Write-Host $result.ErrorOutput }
+            if ($result.ExitCode -ne 0) {
                 throw "No se pudieron cargar las imagenes en kind '$ResolvedName'."
             }
         }
@@ -290,8 +302,10 @@ function Import-ClusterImages {
                 # Un archivo nuevo con todos los tags evita la cache por nombre
                 # de Minikube y conserva los alias del mismo artefacto Docker.
                 Invoke-Docker -Arguments (@('save', '--output', $archive) + $Images)
-                & minikube -p $ResolvedName image load --overwrite=true $archive
-                if ($LASTEXITCODE -ne 0) {
+                $result = Invoke-PlayHubNative -Command 'minikube' -Arguments @('-p', $ResolvedName, 'image', 'load', '--overwrite=true', $archive)
+                if ($result.Output) { Write-Host $result.Output }
+                if ($result.ErrorOutput) { Write-Host $result.ErrorOutput }
+                if ($result.ExitCode -ne 0) {
                     throw "No se pudieron cargar las imagenes en Minikube '$ResolvedName'."
                 }
             } finally {
@@ -300,9 +314,10 @@ function Import-ClusterImages {
         }
         "k3d" {
             Assert-Command -Name "k3d"
-            & k3d image import @Images --cluster $ResolvedName
-
-            if ($LASTEXITCODE -ne 0) {
+            $result = Invoke-PlayHubNative -Command 'k3d' -Arguments (@('image', 'import') + $Images + @('--cluster', $ResolvedName))
+            if ($result.Output) { Write-Host $result.Output }
+            if ($result.ErrorOutput) { Write-Host $result.ErrorOutput }
+            if ($result.ExitCode -ne 0) {
                 throw "No se pudieron cargar las imagenes en k3d '$ResolvedName'."
             }
         }
@@ -366,19 +381,19 @@ function Test-ClusterImage {
                 return
             }
 
-            $waitingReason = & kubectl @(
+            $waiting = Invoke-PlayHubNative -Command 'kubectl' -Arguments @(
                 "get",
                 "pod",
                 $checkPod,
                 "-o",
                 "jsonpath={.status.containerStatuses[0].state.waiting.reason}"
-            ) 2>$null
+            )
 
-            if ($LASTEXITCODE -ne 0) {
+            if ($waiting.ExitCode -ne 0) {
                 $waitingReason = ""
             }
             else {
-                $waitingReason = ($waitingReason -join "`n").Trim()
+                $waitingReason = $waiting.Output.Trim()
             }
 
             if ($waitingReason -in @("ErrImageNeverPull", "ImagePullBackOff", "InvalidImageName")) {
@@ -407,8 +422,11 @@ function Test-ClusterImage {
 
 function Show-DeploymentDiagnostics {
     Write-Warning "El despliegue no se completo. Estado actual del cluster:"
-    & kubectl get pods -o wide
-    & kubectl get events --sort-by=.lastTimestamp
+    foreach ($arguments in @(@('get', 'pods', '-o', 'wide'), @('get', 'events', '--sort-by=.lastTimestamp'))) {
+        $result = Invoke-PlayHubNative -Command 'kubectl' -Arguments $arguments
+        if ($result.Output) { Write-Host $result.Output }
+        if ($result.ErrorOutput) { Write-Host $result.ErrorOutput }
+    }
 }
 
 function Stop-TrackedPortForward {
@@ -428,7 +446,7 @@ function Stop-TrackedPortForward {
         if (-not [string]::IsNullOrWhiteSpace($processId)) {
             $existing = Get-Process -Id $processId -ErrorAction SilentlyContinue
 
-            if ($null -ne $existing) {
+        if ($null -ne $existing -and $existing.ProcessName -like '*kubectl*') {
                 Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
             }
         }
@@ -584,14 +602,23 @@ if (-not [string]::IsNullOrWhiteSpace($resolvedClusterName)) {
 
 if ($resolvedClusterType -eq "minikube") {
     Assert-Command -Name "minikube"
-    & minikube -p $resolvedClusterName status
-
-    if ($LASTEXITCODE -ne 0) {
+    $result = Invoke-PlayHubNative -Command 'minikube' -Arguments @('-p', $resolvedClusterName, 'status')
+    if ($result.Output) { Write-Host $result.Output }
+    if ($result.ErrorOutput) { Write-Host $result.ErrorOutput }
+    if ($result.ExitCode -ne 0) {
         throw "El perfil Minikube '$resolvedClusterName' no esta iniciado. Ejecuta: minikube start -p $resolvedClusterName"
     }
 }
 
 Invoke-Kubectl -Arguments @("cluster-info")
+
+if ($SkipSecurity) {
+    Write-Host 'Se usa la seguridad existente del cluster (-SkipSecurity).'
+}
+else {
+    . (Join-Path $PSScriptRoot 'lib/security-stack.ps1')
+    Initialize-PlayHubSecurity -ProjectRoot $projectRoot -AdoptExisting:$AdoptSecurity
+}
 
 $images = @(
     "playhub-backend:v1.0",
@@ -698,11 +725,7 @@ try {
 
     $migrationManifest = New-MigrationConfigMapJson -Directory $migrationDirectory
 
-    $migrationManifest | & kubectl apply -f -
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "No se pudo aplicar el ConfigMap con las migraciones."
-    }
+    Invoke-KubectlJson -Document $migrationManifest
 
     Write-Host "Ejecutando el Job de Flyway..."
 
@@ -803,17 +826,11 @@ try {
     Invoke-Kubectl -Arguments @("apply", "-n", $currentNamespace, "-f", "k8s/monitoring/")
 
     # El binding del manifiesto usa default; ajustarlo al namespace del despliegue.
-    $monitoringBinding = & kubectl create clusterrolebinding playhub-prometheus-nodes `
-        --clusterrole=playhub-prometheus-nodes `
-        "--serviceaccount=${currentNamespace}:playhub-prometheus" `
-        --dry-run=client -o json
-    if ($LASTEXITCODE -ne 0) {
-        throw "No se pudo generar el binding de Prometheus."
-    }
-    $monitoringBinding | & kubectl apply -f -
-    if ($LASTEXITCODE -ne 0) {
-        throw "No se pudo aplicar el binding de Prometheus."
-    }
+    $monitoringBinding = Get-KubectlOutput -Arguments @(
+        'create', 'clusterrolebinding', 'playhub-prometheus-nodes', '--clusterrole=playhub-prometheus-nodes',
+        "--serviceaccount=${currentNamespace}:playhub-prometheus", '--dry-run=client', '-o', 'json'
+    )
+    Invoke-KubectlJson -Document $monitoringBinding
 
     if ($prometheusExisted) {
         Invoke-Kubectl -Arguments @("rollout", "restart", "deployment/playhub-prometheus")

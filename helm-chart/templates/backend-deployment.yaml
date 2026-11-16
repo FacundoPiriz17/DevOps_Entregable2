@@ -18,8 +18,11 @@ spec:
       labels:
         {{- include "playhub.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
+        app: {{ include "playhub.fullname" . }}-backend
+        slot: {{ .Values.backend.slot | quote }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        playhub.io/release-revision: {{ .Release.Revision | quote }}
     spec:
       terminationGracePeriodSeconds: 30
       securityContext:

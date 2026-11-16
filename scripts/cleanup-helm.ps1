@@ -1,118 +1,66 @@
-[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = "Medium")]
+[CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium')]
 param(
-    [string]$Namespace = "playhub-helm",
-
-    [string]$ReleaseName = "playhub",
-
+    [ValidatePattern('^[a-z0-9][a-z0-9-]*$')][string]$Namespace = 'playhub-helm',
+    [ValidatePattern('^[a-z0-9][a-z0-9-]*$')][string]$ReleaseName = 'playhub',
+    [switch]$DeleteData,
     [switch]$DeleteNamespace,
-
     [switch]$RemoveImages,
-
-    [string]$MinikubeProfile = "minikube"
+    [switch]$RemoveSecurity,
+    [string]$MinikubeProfile = 'minikube'
 )
-
-$ErrorActionPreference = "Stop"
-
+$ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-
-function Assert-Command {
-    param([Parameter(Mandatory = $true)][string]$Name)
-    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-        throw "No se encontro '$Name' en PATH."
-    }
+. (Join-Path $PSScriptRoot 'lib/security-stack.ps1')
+if ($DeleteNamespace -and $Namespace -in @('default', 'kube-system', 'kube-public', 'kube-node-lease', 'kyverno', 'falco')) {
+    throw "No se elimina el namespace protegido $Namespace."
 }
+if ($DeleteNamespace -and -not $DeleteData) {
+    throw '-DeleteNamespace requiere -DeleteData porque elimina todos los PVC del namespace.'
+}
+$context = Invoke-PlayHubNative -Command 'kubectl' -Arguments @('config', 'current-context')
+if ($context.ExitCode -ne 0 -or -not $context.Output) { throw 'No se pudo determinar el contexto de Kubernetes.' }
+$target = "release $ReleaseName en namespace $Namespace (contexto $($context.Output))"
+if ($RemoveSecurity) { $target += '; incluye Kyverno, sus cuatro politicas y Falco registrados por PlayHub' }
+if (-not $DeleteData) { Write-Host 'Se conservan los PVC y datos de PostgreSQL, Prometheus y Grafana.' }
+if (-not $PSCmdlet.ShouldProcess($target, 'Retirar el despliegue de PlayHub')) { return }
 
-function Stop-HelmPortForward {
-    foreach ($name in @("backend", "frontend")) {
-        $pidFile = Join-Path $projectRoot "logs\helm-port-forward-$name.pid"
-        if (Test-Path -LiteralPath $pidFile) {
-            $processId = Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue
-            if (-not [string]::IsNullOrWhiteSpace($processId)) {
-                $existing = Get-Process -Id $processId -ErrorAction SilentlyContinue
-                if ($null -ne $existing) { Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue }
+$python = if ($env:PYTHON) { $env:PYTHON }
+    elseif ($env:OS -eq 'Windows_NT' -and (Get-Command python -ErrorAction SilentlyContinue)) { 'python' }
+    elseif (Get-Command python3 -ErrorAction SilentlyContinue) { 'python3' }
+    else { 'python' }
+$cleanupArgs = @((Join-Path $PSScriptRoot 'lib/helm-cleanup.py'), '--namespace', $Namespace, '--release-name', $ReleaseName)
+if ($DeleteData) { $cleanupArgs += '--delete-data' }
+if ($DeleteNamespace) { $cleanupArgs += '--delete-namespace' }
+$result = Invoke-PlayHubNative -Command $python -Arguments $cleanupArgs
+if ($result.Output) { Write-Host $result.Output }
+if ($result.ErrorOutput) { Write-Host $result.ErrorOutput }
+if ($result.ExitCode -ne 0) { throw 'No se pudo retirar el release; revisar el diagnostico anterior.' }
+
+foreach ($name in @('backend', 'frontend', 'prometheus', 'grafana')) {
+    $pidFile = Join-Path $projectRoot "logs/helm-port-forward-$name.pid"
+    if (Test-Path -LiteralPath $pidFile) {
+        $processId = Get-Content -LiteralPath $pidFile -ErrorAction SilentlyContinue
+        if ($processId -match '^\d+$') {
+            $existing = Get-Process -Id $processId -ErrorAction SilentlyContinue
+            if ($existing -and $existing.ProcessName -like '*kubectl*') {
+                Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
             }
-            Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
         }
+        Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
     }
 }
-
-Assert-Command -Name "helm"
-Assert-Command -Name "kubectl"
-
-$context = (& kubectl config current-context)
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($context)) {
-    throw "No se pudo determinar el contexto actual de Kubernetes."
-}
-
-Write-Host "Contexto: $context"
-Write-Host "Namespace: $Namespace"
-Write-Host "Release: $ReleaseName"
-Write-Host "Solo se elimina el release de Helm; el despliegue de deploy.ps1 (namespace default) no se toca."
-Write-Warning "Se eliminaran tambien el PVC y los datos de PostgreSQL del release."
-
-$target = "release '$ReleaseName' en el namespace '$Namespace' (contexto '$context')"
-if (-not $PSCmdlet.ShouldProcess($target, "Desinstalar con Helm")) {
-    return
-}
-
-Write-Host "Deteniendo los port-forward de Helm, si existen..."
-Stop-HelmPortForward
-
-$found = (& helm list -n $Namespace --short --filter "^${ReleaseName}$")
-if ($LASTEXITCODE -ne 0) {
-    throw "No se pudo consultar la lista de releases en el namespace '$Namespace'."
-}
-
-if ([string]::IsNullOrWhiteSpace(($found -join "").Trim())) {
-    Write-Host "No hay un release '$ReleaseName' en el namespace '$Namespace'. Nada que desinstalar."
-}
-else {
-    & helm uninstall $ReleaseName -n $Namespace
-    if ($LASTEXITCODE -ne 0) {
-        throw "Fallo helm uninstall $ReleaseName -n $Namespace"
-    }
-}
-
-if ($DeleteNamespace) {
-    Write-Host "Eliminando el namespace '$Namespace'..."
-    & kubectl delete namespace $Namespace --ignore-not-found=true
-    if ($LASTEXITCODE -ne 0) {
-        throw "No se pudo eliminar el namespace '$Namespace'."
-    }
-}
-
 if ($RemoveImages) {
-    $images = @("playhub-backend:v1.0", "playhub-frontend:v1.0", "playhub-frontend:v1.0-prod")
-
-    $previous = $ErrorActionPreference
-    $ErrorActionPreference = "Continue"
-    try {
+    foreach ($image in @('playhub-backend:v1.0', 'playhub-frontend:v1.0', 'playhub-frontend:v1.0-prod')) {
         if (Get-Command minikube -ErrorAction SilentlyContinue) {
-            foreach ($image in $images) {
-                Write-Host "Eliminando $image de Minikube..."
-                & minikube -p $MinikubeProfile image rm $image
-            }
+            $result = Invoke-PlayHubNative -Command 'minikube' -Arguments @('-p', $MinikubeProfile, 'image', 'rm', $image)
+            if ($result.ExitCode -ne 0) { Write-Warning "No se pudo retirar $image de Minikube (puede no existir)." }
         }
-        else {
-            Write-Warning "No se encontro minikube en PATH: se omiten las imagenes del cluster."
-        }
-
         if (Get-Command docker -ErrorAction SilentlyContinue) {
-            foreach ($image in $images) {
-                Write-Host "Eliminando $image de Docker..."
-                & docker image rm $image
-            }
+            $result = Invoke-PlayHubNative -Command 'docker' -Arguments @('image', 'rm', $image)
+            if ($result.ExitCode -ne 0) { Write-Warning "No se pudo retirar $image de Docker (puede no existir)." }
         }
-        else {
-            Write-Warning "No se encontro docker en PATH: se omiten las imagenes locales."
-        }
-    }
-    finally {
-        $ErrorActionPreference = $previous
     }
 }
-
-Write-Host ""
-Write-Host "Limpieza terminada. Para comprobarlo:"
-Write-Host "  helm list -n $Namespace"
-Write-Host "  kubectl get all -n $Namespace"
+if ($RemoveSecurity) { Remove-PlayHubSecurity -ProjectRoot $projectRoot }
+else { Write-Host 'Kyverno y Falco se conservan; -RemoveSecurity retira las instalaciones de PlayHub.' }
+Write-Host 'Limpieza de PlayHub terminada.'

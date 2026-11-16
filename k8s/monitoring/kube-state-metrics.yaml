@@ -53,7 +53,8 @@ spec:
           args:
             - --resources=pods
             - --namespaces=$(POD_NAMESPACE)
-            - --metric-allowlist=kube_pod_info,kube_pod_container_info,kube_pod_container_resource_limits,kube_pod_container_resource_requests
+            - --metric-allowlist=kube_pod_info,kube_pod_labels,kube_pod_status_phase,kube_pod_container_info,kube_pod_container_resource_limits,kube_pod_container_resource_requests
+            - --metric-labels-allowlist=pods=[slot]
           env:
             - name: POD_NAMESPACE
               valueFrom:

@@ -3,6 +3,10 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ include "playhub.fullname" . }}-postgres-data
+  {{- if .Values.postgres.persistence.retain }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
   labels:
     {{- include "playhub.labels" . | nindent 4 }}
     app.kubernetes.io/component: postgres
