@@ -1,5 +1,5 @@
 ﻿Validacion de admision Kyverno
-Fecha UTC: 2026-11-15T23:08:43Z
+Fecha UTC: 2026-11-16T00:41:25Z
 kubectl config current-context
 minikube
 Exit code: 0
@@ -43,10 +43,7 @@ kubectl get namespace falco --ignore-not-found -o name
 namespace/falco
 Exit code: 0
 kubectl get serviceaccount falco -n falco --ignore-not-found -o name
-
-Exit code: 0
-kubectl create serviceaccount falco -n falco
-serviceaccount/falco created
+serviceaccount/falco
 Exit code: 0
 kubectl create --dry-run=client -f C:\Users\Estudiante UCU\DevOps\DevOps_Entregable2\tests\kyverno\valid-pod.yaml -o json
 {
@@ -451,15 +448,15 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
     "apiVersion": "v1",
     "kind": "Pod",
     "metadata": {
-        "creationTimestamp": "2026-11-15T23:09:22Z",
+        "creationTimestamp": "2026-11-16T00:42:08Z",
         "generation": 1,
         "labels": {
             "app": "kyverno-validation"
         },
         "name": "kyverno-valid",
         "namespace": "kyverno-validation",
-        "resourceVersion": "259619",
-        "uid": "e5d82fbc-a279-42ec-8a89-922139af9b23"
+        "resourceVersion": "276642",
+        "uid": "a3e6b8ba-d763-46ce-b419-1b1f6048d8c4"
     },
     "spec": {
         "automountServiceAccountToken": false,
@@ -532,35 +529,35 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
         "conditions": [
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "PodReadyToStartContainers"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:22Z",
+                "lastTransitionTime": "2026-11-16T00:42:08Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "Initialized"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "Ready"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "ContainersReady"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:22Z",
+                "lastTransitionTime": "2026-11-16T00:42:08Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "PodScheduled"
@@ -572,7 +569,7 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
                     "cpu": "10m",
                     "memory": "8Mi"
                 },
-                "containerID": "docker://eab0542a7be2cd2d5abd6e45298fa7145fa120666d37e972676d9d7a716b5c04",
+                "containerID": "docker://a0a741c605b1f1f273d45a094d415dd6f66f126575105dc60ae7227ec87819ec",
                 "image": "busybox:1.37.0",
                 "imageID": "docker-pullable://busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec",
                 "lastState": {},
@@ -592,7 +589,7 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
                 "started": true,
                 "state": {
                     "running": {
-                        "startedAt": "2026-11-15T23:09:23Z"
+                        "startedAt": "2026-11-16T00:42:09Z"
                     }
                 }
             }
@@ -605,14 +602,14 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
         ],
         "observedGeneration": 1,
         "phase": "Running",
-        "podIP": "10.244.0.196",
+        "podIP": "10.244.0.213",
         "podIPs": [
             {
-                "ip": "10.244.0.196"
+                "ip": "10.244.0.213"
             }
         ],
         "qosClass": "Burstable",
-        "startTime": "2026-11-15T23:09:22Z"
+        "startTime": "2026-11-16T00:42:08Z"
     }
 }
 Exit code: 0
@@ -630,15 +627,15 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
     "apiVersion": "v1",
     "kind": "Pod",
     "metadata": {
-        "creationTimestamp": "2026-11-15T23:09:22Z",
+        "creationTimestamp": "2026-11-16T00:42:08Z",
         "generation": 1,
         "labels": {
             "app": "kyverno-validation"
         },
         "name": "kyverno-valid",
         "namespace": "kyverno-validation",
-        "resourceVersion": "259619",
-        "uid": "e5d82fbc-a279-42ec-8a89-922139af9b23"
+        "resourceVersion": "276642",
+        "uid": "a3e6b8ba-d763-46ce-b419-1b1f6048d8c4"
     },
     "spec": {
         "automountServiceAccountToken": false,
@@ -711,35 +708,35 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
         "conditions": [
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "PodReadyToStartContainers"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:22Z",
+                "lastTransitionTime": "2026-11-16T00:42:08Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "Initialized"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "Ready"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "ContainersReady"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:22Z",
+                "lastTransitionTime": "2026-11-16T00:42:08Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "PodScheduled"
@@ -751,7 +748,7 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
                     "cpu": "10m",
                     "memory": "8Mi"
                 },
-                "containerID": "docker://eab0542a7be2cd2d5abd6e45298fa7145fa120666d37e972676d9d7a716b5c04",
+                "containerID": "docker://a0a741c605b1f1f273d45a094d415dd6f66f126575105dc60ae7227ec87819ec",
                 "image": "busybox:1.37.0",
                 "imageID": "docker-pullable://busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec",
                 "lastState": {},
@@ -771,7 +768,7 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
                 "started": true,
                 "state": {
                     "running": {
-                        "startedAt": "2026-11-15T23:09:23Z"
+                        "startedAt": "2026-11-16T00:42:09Z"
                     }
                 }
             }
@@ -784,14 +781,14 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
         ],
         "observedGeneration": 1,
         "phase": "Running",
-        "podIP": "10.244.0.196",
+        "podIP": "10.244.0.213",
         "podIPs": [
             {
-                "ip": "10.244.0.196"
+                "ip": "10.244.0.213"
             }
         ],
         "qosClass": "Burstable",
-        "startTime": "2026-11-15T23:09:22Z"
+        "startTime": "2026-11-16T00:42:08Z"
     }
 }
 Exit code: 0
@@ -809,15 +806,15 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
     "apiVersion": "v1",
     "kind": "Pod",
     "metadata": {
-        "creationTimestamp": "2026-11-15T23:09:22Z",
+        "creationTimestamp": "2026-11-16T00:42:08Z",
         "generation": 1,
         "labels": {
             "app": "kyverno-validation"
         },
         "name": "kyverno-valid",
         "namespace": "kyverno-validation",
-        "resourceVersion": "259619",
-        "uid": "e5d82fbc-a279-42ec-8a89-922139af9b23"
+        "resourceVersion": "276642",
+        "uid": "a3e6b8ba-d763-46ce-b419-1b1f6048d8c4"
     },
     "spec": {
         "automountServiceAccountToken": false,
@@ -890,35 +887,35 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
         "conditions": [
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "PodReadyToStartContainers"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:22Z",
+                "lastTransitionTime": "2026-11-16T00:42:08Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "Initialized"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "Ready"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "ContainersReady"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:22Z",
+                "lastTransitionTime": "2026-11-16T00:42:08Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "PodScheduled"
@@ -930,7 +927,7 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
                     "cpu": "10m",
                     "memory": "8Mi"
                 },
-                "containerID": "docker://eab0542a7be2cd2d5abd6e45298fa7145fa120666d37e972676d9d7a716b5c04",
+                "containerID": "docker://a0a741c605b1f1f273d45a094d415dd6f66f126575105dc60ae7227ec87819ec",
                 "image": "busybox:1.37.0",
                 "imageID": "docker-pullable://busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec",
                 "lastState": {},
@@ -950,7 +947,7 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
                 "started": true,
                 "state": {
                     "running": {
-                        "startedAt": "2026-11-15T23:09:23Z"
+                        "startedAt": "2026-11-16T00:42:09Z"
                     }
                 }
             }
@@ -963,14 +960,14 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
         ],
         "observedGeneration": 1,
         "phase": "Running",
-        "podIP": "10.244.0.196",
+        "podIP": "10.244.0.213",
         "podIPs": [
             {
-                "ip": "10.244.0.196"
+                "ip": "10.244.0.213"
             }
         ],
         "qosClass": "Burstable",
-        "startTime": "2026-11-15T23:09:22Z"
+        "startTime": "2026-11-16T00:42:08Z"
     }
 }
 Exit code: 0
@@ -983,15 +980,15 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
     "apiVersion": "v1",
     "kind": "Pod",
     "metadata": {
-        "creationTimestamp": "2026-11-15T23:09:22Z",
+        "creationTimestamp": "2026-11-16T00:42:08Z",
         "generation": 1,
         "labels": {
             "app": "kyverno-validation"
         },
         "name": "kyverno-valid",
         "namespace": "kyverno-validation",
-        "resourceVersion": "259619",
-        "uid": "e5d82fbc-a279-42ec-8a89-922139af9b23"
+        "resourceVersion": "276642",
+        "uid": "a3e6b8ba-d763-46ce-b419-1b1f6048d8c4"
     },
     "spec": {
         "automountServiceAccountToken": false,
@@ -1064,35 +1061,35 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
         "conditions": [
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "PodReadyToStartContainers"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:22Z",
+                "lastTransitionTime": "2026-11-16T00:42:08Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "Initialized"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "Ready"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:24Z",
+                "lastTransitionTime": "2026-11-16T00:42:11Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "ContainersReady"
             },
             {
                 "lastProbeTime": null,
-                "lastTransitionTime": "2026-11-15T23:09:22Z",
+                "lastTransitionTime": "2026-11-16T00:42:08Z",
                 "observedGeneration": 1,
                 "status": "True",
                 "type": "PodScheduled"
@@ -1104,7 +1101,7 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
                     "cpu": "10m",
                     "memory": "8Mi"
                 },
-                "containerID": "docker://eab0542a7be2cd2d5abd6e45298fa7145fa120666d37e972676d9d7a716b5c04",
+                "containerID": "docker://a0a741c605b1f1f273d45a094d415dd6f66f126575105dc60ae7227ec87819ec",
                 "image": "busybox:1.37.0",
                 "imageID": "docker-pullable://busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec",
                 "lastState": {},
@@ -1124,7 +1121,7 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
                 "started": true,
                 "state": {
                     "running": {
-                        "startedAt": "2026-11-15T23:09:23Z"
+                        "startedAt": "2026-11-16T00:42:09Z"
                     }
                 }
             }
@@ -1137,25 +1134,22 @@ kubectl get pod kyverno-valid -n kyverno-validation -o json
         ],
         "observedGeneration": 1,
         "phase": "Running",
-        "podIP": "10.244.0.196",
+        "podIP": "10.244.0.213",
         "podIPs": [
             {
-                "ip": "10.244.0.196"
+                "ip": "10.244.0.213"
             }
         ],
         "qosClass": "Burstable",
-        "startTime": "2026-11-15T23:09:22Z"
+        "startTime": "2026-11-16T00:42:08Z"
     }
 }
 Exit code: 0
 kubectl replace --raw /api/v1/namespaces/kyverno-validation/pods/kyverno-valid/ephemeralcontainers?dryRun=All -f -
-{"kind":"Pod","apiVersion":"v1","metadata":{"name":"kyverno-valid","namespace":"kyverno-validation","uid":"e5d82fbc-a279-42ec-8a89-922139af9b23","resourceVersion":"259619","generation":2,"creationTimestamp":"2026-11-15T23:09:22Z","labels":{"app":"kyverno-validation"},"managedFields":[{"manager":"kubectl-create","operation":"Update","apiVersion":"v1","time":"2026-11-15T23:09:22Z","fieldsType":"FieldsV1","fieldsV1":{"f:metadata":{"f:labels":{".":{},"f:app":{}}},"f:spec":{"f:automountServiceAccountToken":{},"f:containers":{"k:{\"name\":\"demo\"}":{".":{},"f:command":{},"f:image":{},"f:imagePullPolicy":{},"f:name":{},"f:resources":{".":{},"f:limits":{".":{},"f:cpu":{},"f:memory":{}},"f:requests":{".":{},"f:cpu":{},"f:memory":{}}},"f:securityContext":{".":{},"f:allowPrivilegeEscalation":{},"f:capabilities":{".":{},"f:drop":{}}},"f:terminationMessagePath":{},"f:terminationMessagePolicy":{}}},"f:dnsPolicy":{},"f:enableServiceLinks":{},"f:restartPolicy":{},"f:schedulerName":{},"f:securityContext":{".":{},"f:runAsGroup":{},"f:runAsNonRoot":{},"f:runAsUser":{},"f:seccompProfile":{".":{},"f:type":{}}},"f:terminationGracePeriodSeconds":{}}}},{"manager":"kubelet","operation":"Update","apiVersion":"v1","time":"2026-11-15T23:09:24Z","fieldsType":"FieldsV1","fieldsV1":{"f:status":{"f:conditions":{"k:{\"type\":\"ContainersReady\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}},"k:{\"type\":\"Initialized\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}},"k:{\"type\":\"PodReadyToStartContainers\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}},"k:{\"type\":\"PodScheduled\"}":{"f:observedGeneration":{}},"k:{\"type\":\"Ready\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}}},"f:containerStatuses":{},"f:hostIP":{},"f:hostIPs":{},"f:observedGeneration":{},"f:phase":{},"f:podIP":{},"f:podIPs":{".":{},"k:{\"ip\":\"10.244.0.196\"}":{".":{},"f:ip":{}}},"f:startTime":{}}},"subresource":"status"},{"manager":"kubectl.exe","operation":"Update","apiVersion":"v1","time":"2026-11-15T23:09:26Z","fieldsType":"FieldsV1","fieldsV1":{"f:spec":{"f:ephemeralContainers":{".":{},"k:{\"name\":\"debug-valid\"}":{".":{},"f:command":{},"f:image":{},"f:imagePullPolicy":{},"f:name":{},"f:resources":{},"f:securityContext":{".":{},"f:allowPrivilegeEscalation":{},"f:runAsNonRoot":{},"f:runAsUser":{}},"f:terminationMessagePath":{},"f:terminationMessagePolicy":{}}}}},"subresource":"ephemeralcontainers"}]},"spec":{"containers":[{"name":"demo","image":"busybox:1.37.0","command":["sh","-c","id; sleep 3600"],"resources":{"limits":{"cpu":"100m","memory":"32Mi"},"requests":{"cpu":"10m","memory":"8Mi"}},"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","imagePullPolicy":"IfNotPresent","securityContext":{"capabilities":{"drop":["ALL"]},"allowPrivilegeEscalation":false}}],"ephemeralContainers":[{"name":"debug-valid","image":"busybox:1.37.0","command":["true"],"resources":{},"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","imagePullPolicy":"IfNotPresent","securityContext":{"runAsUser":1000,"runAsNonRoot":true,"allowPrivilegeEscalation":false}}],"restartPolicy":"Never","terminationGracePeriodSeconds":30,"dnsPolicy":"ClusterFirst","serviceAccountName":"default","serviceAccount":"default","automountServiceAccountToken":false,"nodeName":"minikube","securityContext":{"runAsUser":1000,"runAsGroup":1000,"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}},"schedulerName":"default-scheduler","tolerations":[{"key":"node.kubernetes.io/not-ready","operator":"Exists","effect":"NoExecute","tolerationSeconds":300},{"key":"node.kubernetes.io/unreachable","operator":"Exists","effect":"NoExecute","tolerationSeconds":300}],"priority":0,"enableServiceLinks":true,"preemptionPolicy":"PreemptLowerPriority"},"status":{"observedGeneration":1,"phase":"Running","conditions":[{"type":"PodReadyToStartContainers","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-15T23:09:24Z"},{"type":"Initialized","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-15T23:09:22Z"},{"type":"Ready","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-15T23:09:24Z"},{"type":"ContainersReady","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-15T23:09:24Z"},{"type":"PodScheduled","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-15T23:09:22Z"}],"hostIP":"192.168.49.2","hostIPs":[{"ip":"192.168.49.2"}],"podIP":"10.244.0.196","podIPs":[{"ip":"10.244.0.196"}],"startTime":"2026-11-15T23:09:22Z","containerStatuses":[{"name":"demo","state":{"running":{"startedAt":"2026-11-15T23:09:23Z"}},"lastState":{},"ready":true,"restartCount":0,"image":"busybox:1.37.0","imageID":"docker-pullable://busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec","containerID":"docker://eab0542a7be2cd2d5abd6e45298fa7145fa120666d37e972676d9d7a716b5c04","started":true,"allocatedResources":{"cpu":"10m","memory":"8Mi"},"resources":{"limits":{"cpu":"100m","memory":"32Mi"},"requests":{"cpu":"10m","memory":"8Mi"}}}],"qosClass":"Burstable"}}
+{"kind":"Pod","apiVersion":"v1","metadata":{"name":"kyverno-valid","namespace":"kyverno-validation","uid":"a3e6b8ba-d763-46ce-b419-1b1f6048d8c4","resourceVersion":"276642","generation":2,"creationTimestamp":"2026-11-16T00:42:08Z","labels":{"app":"kyverno-validation"},"managedFields":[{"manager":"kubectl-create","operation":"Update","apiVersion":"v1","time":"2026-11-16T00:42:08Z","fieldsType":"FieldsV1","fieldsV1":{"f:metadata":{"f:labels":{".":{},"f:app":{}}},"f:spec":{"f:automountServiceAccountToken":{},"f:containers":{"k:{\"name\":\"demo\"}":{".":{},"f:command":{},"f:image":{},"f:imagePullPolicy":{},"f:name":{},"f:resources":{".":{},"f:limits":{".":{},"f:cpu":{},"f:memory":{}},"f:requests":{".":{},"f:cpu":{},"f:memory":{}}},"f:securityContext":{".":{},"f:allowPrivilegeEscalation":{},"f:capabilities":{".":{},"f:drop":{}}},"f:terminationMessagePath":{},"f:terminationMessagePolicy":{}}},"f:dnsPolicy":{},"f:enableServiceLinks":{},"f:restartPolicy":{},"f:schedulerName":{},"f:securityContext":{".":{},"f:runAsGroup":{},"f:runAsNonRoot":{},"f:runAsUser":{},"f:seccompProfile":{".":{},"f:type":{}}},"f:terminationGracePeriodSeconds":{}}}},{"manager":"kubelet","operation":"Update","apiVersion":"v1","time":"2026-11-16T00:42:11Z","fieldsType":"FieldsV1","fieldsV1":{"f:status":{"f:conditions":{"k:{\"type\":\"ContainersReady\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}},"k:{\"type\":\"Initialized\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}},"k:{\"type\":\"PodReadyToStartContainers\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}},"k:{\"type\":\"PodScheduled\"}":{"f:observedGeneration":{}},"k:{\"type\":\"Ready\"}":{".":{},"f:lastProbeTime":{},"f:lastTransitionTime":{},"f:observedGeneration":{},"f:status":{},"f:type":{}}},"f:containerStatuses":{},"f:hostIP":{},"f:hostIPs":{},"f:observedGeneration":{},"f:phase":{},"f:podIP":{},"f:podIPs":{".":{},"k:{\"ip\":\"10.244.0.213\"}":{".":{},"f:ip":{}}},"f:startTime":{}}},"subresource":"status"},{"manager":"kubectl.exe","operation":"Update","apiVersion":"v1","time":"2026-11-16T00:42:14Z","fieldsType":"FieldsV1","fieldsV1":{"f:spec":{"f:ephemeralContainers":{".":{},"k:{\"name\":\"debug-valid\"}":{".":{},"f:command":{},"f:image":{},"f:imagePullPolicy":{},"f:name":{},"f:resources":{},"f:securityContext":{".":{},"f:allowPrivilegeEscalation":{},"f:runAsNonRoot":{},"f:runAsUser":{}},"f:terminationMessagePath":{},"f:terminationMessagePolicy":{}}}}},"subresource":"ephemeralcontainers"}]},"spec":{"containers":[{"name":"demo","image":"busybox:1.37.0","command":["sh","-c","id; sleep 3600"],"resources":{"limits":{"cpu":"100m","memory":"32Mi"},"requests":{"cpu":"10m","memory":"8Mi"}},"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","imagePullPolicy":"IfNotPresent","securityContext":{"capabilities":{"drop":["ALL"]},"allowPrivilegeEscalation":false}}],"ephemeralContainers":[{"name":"debug-valid","image":"busybox:1.37.0","command":["true"],"resources":{},"terminationMessagePath":"/dev/termination-log","terminationMessagePolicy":"File","imagePullPolicy":"IfNotPresent","securityContext":{"runAsUser":1000,"runAsNonRoot":true,"allowPrivilegeEscalation":false}}],"restartPolicy":"Never","terminationGracePeriodSeconds":30,"dnsPolicy":"ClusterFirst","serviceAccountName":"default","serviceAccount":"default","automountServiceAccountToken":false,"nodeName":"minikube","securityContext":{"runAsUser":1000,"runAsGroup":1000,"runAsNonRoot":true,"seccompProfile":{"type":"RuntimeDefault"}},"schedulerName":"default-scheduler","tolerations":[{"key":"node.kubernetes.io/not-ready","operator":"Exists","effect":"NoExecute","tolerationSeconds":300},{"key":"node.kubernetes.io/unreachable","operator":"Exists","effect":"NoExecute","tolerationSeconds":300}],"priority":0,"enableServiceLinks":true,"preemptionPolicy":"PreemptLowerPriority"},"status":{"observedGeneration":1,"phase":"Running","conditions":[{"type":"PodReadyToStartContainers","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-16T00:42:11Z"},{"type":"Initialized","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-16T00:42:08Z"},{"type":"Ready","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-16T00:42:11Z"},{"type":"ContainersReady","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-16T00:42:11Z"},{"type":"PodScheduled","observedGeneration":1,"status":"True","lastProbeTime":null,"lastTransitionTime":"2026-11-16T00:42:08Z"}],"hostIP":"192.168.49.2","hostIPs":[{"ip":"192.168.49.2"}],"podIP":"10.244.0.213","podIPs":[{"ip":"10.244.0.213"}],"startTime":"2026-11-16T00:42:08Z","containerStatuses":[{"name":"demo","state":{"running":{"startedAt":"2026-11-16T00:42:09Z"}},"lastState":{},"ready":true,"restartCount":0,"image":"busybox:1.37.0","imageID":"docker-pullable://busybox@sha256:a7dbc319b1438115a207e11930dc4bb3e643dcb3ec0bdd694bb36cd8fad289ec","containerID":"docker://a0a741c605b1f1f273d45a094d415dd6f66f126575105dc60ae7227ec87819ec","started":true,"allocatedResources":{"cpu":"10m","memory":"8Mi"},"resources":{"limits":{"cpu":"100m","memory":"32Mi"},"requests":{"cpu":"10m","memory":"8Mi"}}}],"qosClass":"Burstable"}}
 Exit code: 0
 PASS: ephemeral valido sin resources (API Kubernetes) aceptado.
 RESULTADO: 53 comprobaciones correctas.
 kubectl delete pod kyverno-valid -n kyverno-validation --wait=false
 pod "kyverno-valid" deleted from kyverno-validation namespace
-Exit code: 0
-kubectl delete serviceaccount falco -n falco --ignore-not-found
-serviceaccount "falco" deleted from falco namespace
 Exit code: 0

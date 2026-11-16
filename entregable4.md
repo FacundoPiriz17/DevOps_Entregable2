@@ -1,10 +1,14 @@
-# Entregable 4: cuarta politica Kyverno
+# Entregable 4: Kyverno y Falco
 
 ## Objetivo
 
 Incorporar una cuarta politica de admision, `disallow-privilege-escalation`, verificar
 que los Pods que no la cumplen son rechazados y dejar la evidencia en
 `reports/kyvernovalidation.log`.
+
+Ademas, verificar la deteccion en tiempo de ejecucion con Falco mediante un
+evento controlado que no abre una shell y dejar la evidencia en
+`reports/falcoevent.log`.
 
 ## Politicas en modo bloqueante
 
@@ -85,3 +89,103 @@ casos sin `allowPrivilegeEscalation: false`, incluidos init y ephemeral.
   politica se aplica igualmente al crear los Pods.
 - `scripts/install-kyverno.ps1` espera las tres `ClusterPolicy` y la
   `ValidatingPolicy` antes de finalizar.
+
+## Monitoreo de seguridad en tiempo de ejecucion con Falco
+
+### Instalacion
+
+Falco se instala con Helm mediante `scripts/deploy-falco.ps1` o
+`scripts/deploy-falco.sh`. Se requiere `helm`, `kubectl` y Python 3.11+ en el
+`PATH`. El proyecto fija el chart `9.2.2`, usa el driver `modern_ebpf` y
+configura salida JSON para poder correlacionar los eventos.
+
+```powershell
+.\scripts\deploy-falco.ps1
+```
+
+```bash
+bash scripts/deploy-falco.sh
+```
+
+### Evento de prueba
+
+La prueba oficial no abre una shell ni crea un Pod nuevo. Selecciona el Pod
+`backend` de PlayHub y ejecuta directamente BusyBox para crear un enlace
+simbolico hacia `/etc/shadow`:
+
+```text
+kubectl exec -n default <pod-backend> -c backend -- \
+  /bin/busybox ln -s /etc/shadow /tmp/playhub-falco-<timestamp>.link
+```
+
+El comando no usa `-i`, no usa `-t` y no invoca `sh`. El enlace se elimina al
+finalizar con `/bin/busybox rm -f`. No se lee ni se modifica `/etc/shadow`.
+
+Como `kubectl exec` no crea ni modifica un Pod, las politicas de admision de
+Kyverno no intervienen. Falco tampoco bloquea la accion: la detecta y la
+registra.
+
+```powershell
+.\scripts\simulate-symlink-attack.ps1
+.\scripts\get-falco-symlink-report.ps1
+Get-Content reports\falcoevent.log
+```
+
+```bash
+bash scripts/simulate-symlink-attack.sh
+bash scripts/get-falco-symlink-report.sh
+cat reports/falcoevent.log
+```
+
+### Deteccion y evidencia
+
+Falco detecta la regla integrada `Create Symlink Over Sensitive Files`, con
+prioridad `WARNING` y tactica MITRE `T1555 - Credentials from Password Stores`.
+La salida esperada incluye:
+
+```text
+Symlinks created over sensitive files | target=/etc/shadow
+linkpath=/tmp/playhub-falco-<timestamp>.link ...
+```
+
+El recolector correlaciona la alerta con el `container.id` del Pod probado, la
+ventana de tiempo y el target `/etc/shadow`. La evidencia principal queda en:
+
+```text
+reports/falcoevent.log
+```
+
+Tambien se genera un reporte legible en:
+
+```text
+reports/falco/falco-symlink-report-<timestamp>.txt
+```
+
+### Descripcion del evento
+
+Se creo un enlace simbolico dentro del contenedor `backend` apuntando a
+`/etc/shadow`, archivo sensible de credenciales. La accion simula la preparacion
+de un acceso no autorizado a credenciales. No se leyo ni se modifico el archivo
+y el enlace fue eliminado al finalizar. Falco lo clasifica como `WARNING` y
+MITRE `T1555`.
+
+### Verificacion
+
+```powershell
+kubectl logs -n falco -l app.kubernetes.io/name=falco -c falco --since=10m |
+  Select-String "Symlinks created over sensitive files"
+
+Select-String "Terminal shell in container" reports\falcoevent.log
+```
+
+La segunda busqueda no debe devolver resultados. La prueba shell anterior se
+conserva como legado, pero la prueba oficial de este entregable es la de
+symlink.
+
+### Resultado
+
+La prueba se ejecuto sobre Minikube con el backend Blue. Falco registro una
+alerta de `Create Symlink Over Sensitive Files` con `target=/etc/shadow` y
+`terminal=0`; la evidencia quedo en `reports/falcoevent.log`. No se detecto la
+regla `Terminal shell in container` y la eliminacion del enlace temporal fue
+correcta.

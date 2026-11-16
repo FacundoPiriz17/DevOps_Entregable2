@@ -6,6 +6,7 @@
 # Logs
 *.log
 !reports/falco-event.log
+!reports/falcoevent.log
 !reports/kyvernovalidation.log
 logs/
 .tmp/
