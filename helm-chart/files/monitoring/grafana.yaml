@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: playhub-grafana-data
+  labels:
+    app: playhub-grafana
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: playhub-grafana
+  labels:
+    app: playhub-grafana
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: playhub-grafana
+  template:
+    metadata:
+      labels:
+        app: playhub-grafana
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 472
+        runAsGroup: 472
+        fsGroup: 472
+      containers:
+        - name: grafana
+          image: grafana/grafana:13.2.3
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+          ports:
+            - name: http
+              containerPort: 3000
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/grafana
+            - name: provisioning
+              mountPath: /etc/grafana/provisioning/datasources
+              readOnly: true
+            - name: dashboard-provider
+              mountPath: /etc/grafana/provisioning/dashboards
+              readOnly: true
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+              readOnly: true
+            - name: alerting
+              mountPath: /etc/grafana/provisioning/alerting
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: playhub-grafana-data
+        - name: provisioning
+          configMap:
+            name: playhub-grafana-datasources
+        - name: dashboard-provider
+          configMap:
+            name: playhub-grafana-dashboard-provider
+        - name: dashboards
+          configMap:
+            name: playhub-grafana-resource-dashboards
+        - name: alerting
+          configMap:
+            name: playhub-grafana-alerts
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: playhub-grafana
+  labels:
+    app: playhub-grafana
+spec:
+  type: ClusterIP
+  selector:
+    app: playhub-grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

@@ -4,6 +4,7 @@ set -euo pipefail
 
 delete_data=false
 remove_images=false
+remove_security=false
 dry_run=false
 minikube_profile="minikube"
 
@@ -17,6 +18,7 @@ usage() {
     "Opciones:" \
     "  --delete-data              Elimina los PVC y datos de PostgreSQL, Prometheus y Grafana." \
     "  --remove-images            Elimina las imagenes PlayHub de Minikube y Docker." \
+    "  --remove-security          Retira Kyverno/politicas/Falco registrados por PlayHub." \
     "  --minikube-profile NOMBRE  Perfil de Minikube (default: minikube)." \
     "  --dry-run                  Muestra las eliminaciones sin ejecutarlas." \
     "  -h, --help                 Muestra esta ayuda."
@@ -30,6 +32,10 @@ while (($# > 0)); do
       ;;
     --remove-images)
       remove_images=true
+      shift
+      ;;
+    --remove-security)
+      remove_security=true
       shift
       ;;
     --minikube-profile)
@@ -116,7 +122,8 @@ stop_tracked_port_forward() {
       if [[ "$dry_run" == true ]]; then
         echo "DRY-RUN: kill $pid (port-forward $name)"
       else
-        kill "$pid" 2>/dev/null || true
+        process_name="$(ps -p "$pid" -o comm= 2>/dev/null || true)"
+        if [[ "$process_name" == *kubectl* ]]; then kill "$pid" 2>/dev/null || true; fi
       fi
     fi
 
@@ -196,13 +203,16 @@ delete_resources configmap \
 
 delete_resources rolebinding playhub-prometheus-discovery playhub-kube-state-metrics
 delete_resources role playhub-prometheus-discovery playhub-kube-state-metrics
-delete_resources serviceaccount playhub-prometheus playhub-kube-state-metrics
+delete_resources serviceaccount playhub-prometheus playhub-kube-state-metrics playhub-cadvisor-network
 delete_resources clusterrolebinding playhub-prometheus-nodes
 delete_resources clusterrole playhub-prometheus-nodes
 
 delete_resources secret playhub-secrets
 
-pod_names="$(kubectl get pods --namespace "$namespace" -o name)"
+pod_names=""
+if [[ "$dry_run" == false ]]; then
+  pod_names="$(kubectl get pods --namespace "$namespace" -o name)"
+fi
 image_check_pods=()
 
 while IFS= read -r pod; do
@@ -253,6 +263,17 @@ if [[ "$remove_images" == true ]]; then
   else
     echo "Aviso: no se encontro docker; no se eliminaron las imagenes locales." >&2
   fi
+fi
+
+if [[ "$remove_security" == true ]]; then
+  source "$script_dir/lib/security-stack.sh"
+  if [[ "$dry_run" == true ]]; then
+    echo 'DRY-RUN: retirar Kyverno, cuatro politicas y Falco registrados por PlayHub.'
+  else
+    remove_playhub_security "$project_root"
+  fi
+else
+  echo 'Kyverno y Falco se conservan. Usar --remove-security para las instalaciones de PlayHub.'
 fi
 
 if [[ "$dry_run" == true ]]; then

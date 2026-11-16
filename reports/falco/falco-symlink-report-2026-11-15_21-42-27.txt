@@ -1,0 +1,43 @@
+==============================================
+        PLAYHUB - EVENTO FALCO (SYMLINK)
+==============================================
+
+Reporte generado : 2026-11-15 21:42:27
+Zona horaria: America/Montevideo (UTC-03:00)
+Kubernetes namespace: falco
+Falco pod selector: app.kubernetes.io/name=falco
+Pod de la prueba: default/playhub-backend-blue-85648fd447-q7j7v
+Contenedor: backend
+Ventana UTC: 2026-11-16T00:42:26.251002Z a 2026-11-16T00:42:26.564674Z
+
+--------------- EVENTO -----------------------
+Regla: Create Symlink Over Sensitive Files
+Prioridad: WARNING
+MITRE ATT&CK: T1555 - Credentials from Password Stores
+Target: /etc/shadow
+Enlace creado: /tmp/playhub-falco-1794789746127.link
+Shell interactiva: no
+TTY: no
+Kyverno: no interviene; no se creo ni modifico ningun Pod.
+Limpieza del enlace: correcta
+
+Descripcion:
+Se creo un enlace simbolico dentro del contenedor backend apuntando a
+/etc/shadow, archivo sensible de credenciales. La accion simula la
+preparacion de un acceso no autorizado a credenciales. No se leyo ni
+modifico el archivo y el enlace fue eliminado al finalizar.
+
+--------------- COMANDOS ---------------------
+Ataque:
+kubectl exec -n default playhub-backend-blue-85648fd447-q7j7v -c backend -- /bin/busybox ln -s /etc/shadow /tmp/playhub-falco-1794789746127.link
+
+Limpieza:
+kubectl exec -n default playhub-backend-blue-85648fd447-q7j7v -c backend -- /bin/busybox rm -f /tmp/playhub-falco-1794789746127.link
+
+--------------- RESUMEN ----------------------
+Total de alertas de Falco: 1
+
+--------------- ALERTAS ----------------------
+00:42:26.561318730: Warning Symlinks created over sensitive files | target=/etc/shadow linkpath=/tmp/playhub-falco-1794789746127.link evt_type=symlink user=<NA> user_uid=1000 user_loginuid=-1 process=busybox proc_exepath=/bin/busybox parent=containerd-shim command=busybox ln -s /etc/shadow /tmp/playhub-falco-1794789746127.link terminal=0 container_id=79c2d2c959e6 container_name=k8s_backend_playhub-backend-blue-85648fd447-q7j7v_default_22ee12ef-703c-4915-aa44-3302caa47e9c_0 container_image_repository=playhub-backend container_image_tag=v1.0 k8s_pod_name=playhub-backend-blue-85648fd447-q7j7v k8s_ns_name=default
+
+--------------- FIN DEL REPORTE ---------------

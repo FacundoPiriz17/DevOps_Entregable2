@@ -45,4 +45,4 @@ USER node
 
 EXPOSE 5745
 
-CMD ["node", "node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0", "--port", "5745"]
+CMD ["sh", "-c", "exec node node_modules/next/dist/bin/next start --hostname \"$HOSTNAME\" --port \"$PORT\""]

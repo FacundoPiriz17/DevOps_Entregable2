@@ -37,6 +37,15 @@ spec:
           - key: "{{ request.object.metadata.namespace || 'default' }}:{{ request.object.metadata.ownerReferences[?kind == 'DaemonSet' && controller == `true`].name | [0] || '' }}:{{ request.object.spec.serviceAccountName || 'default' }}:{{ request.userInfo.username || '' }}"
             operator: NotEquals
             value: "falco:falco:falco:system:serviceaccount:kube-system:daemon-set-controller"
+          # Helm creates a dedicated SA whose name also identifies the DaemonSet.
+          - key: >-
+              {{ request.userInfo.username == 'system:serviceaccount:kube-system:daemon-set-controller' &&
+              request.object.metadata.annotations."playhub.dev/privileged-monitor" == 'cadvisor-network' &&
+              request.object.metadata.labels.app == request.object.spec.serviceAccountName &&
+              regex_match('^.+-cadvisor-network$', request.object.spec.serviceAccountName || '') &&
+              contains(request.object.metadata.ownerReferences[?kind == 'DaemonSet' && controller == `true`].name || `[]`, request.object.spec.serviceAccountName || '') }}
+            operator: NotEquals
+            value: true
       validate:
         failureAction: Enforce
         allowExistingViolations: false

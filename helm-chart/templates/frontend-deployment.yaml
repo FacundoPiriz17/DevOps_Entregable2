@@ -18,6 +18,8 @@ spec:
       labels:
         {{- include "playhub.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: frontend
+      annotations:
+        playhub.io/release-revision: {{ .Release.Revision | quote }}
     spec:
       terminationGracePeriodSeconds: 30
       securityContext:

@@ -2,6 +2,7 @@ nameOverride: ""
 fullnameOverride: ""
 backend:
   replicaCount: 1
+  slot: helm
   image:
     repository: playhub-backend
     tag: v1.0
@@ -44,6 +45,7 @@ postgres:
   user: postgres
   persistence:
     enabled: true
+    retain: true
     size: 2Gi
     storageClass: ""
   resources:
@@ -83,3 +85,12 @@ ingress:
   tls:
     enabled: false
     secretName: ""
+monitoring:
+  enabled: true
+  nodeExporter:
+    # 0 elige un puerto 10000-29999 derivado del release y namespace.
+    # Puede fijarse otro puerto libre si el nodo ya utiliza el elegido.
+    port: 0
+  persistence:
+    # Helm uninstall conserva los historicos de Prometheus y Grafana.
+    retain: true

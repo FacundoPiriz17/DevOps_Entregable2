@@ -1,0 +1,69 @@
+{{- if .Values.monitoring.enabled }}
+{{- $root := . }}
+{{- $base := include "playhub.fullname" . }}
+{{- $prefix := printf "%s-" $base }}
+{{- $clusterRoleName := include "playhub.monitoring.clusterRoleName" . }}
+{{- $checksum := printf "%s\n%s\n%s\n%v\n%v" ((.Files.Glob "files/monitoring/*.yaml").AsConfig) ((.Files.Glob "files/grafana/dashboards/*.json").AsConfig) (include (print $.Template.BasePath "/monitoring-grafana-config.yaml") .) .Values.backend.service.port .Values.frontend.service.port | sha256sum }}
+{{- range $path, $_ := .Files.Glob "files/monitoring/*.yaml" }}
+{{- $originalText := $root.Files.Get $path }}
+{{- $text := replace "playhub-" $prefix $originalText }}
+{{- range $document := regexSplit "(?m)^---[ \\t]*\\r?$" $text -1 }}
+{{- if trim $document }}
+{{- $resource := fromYaml $document }}
+{{- $kind := $resource.kind }}
+{{- $metadata := $resource.metadata }}
+{{- $labels := merge (dict "app.kubernetes.io/instance" $root.Release.Name "app.kubernetes.io/name" (include "playhub.name" $root) "app.kubernetes.io/component" "monitoring") ($metadata.labels | default dict) }}
+{{- $_ := set $metadata "labels" $labels }}
+{{- if or (eq $kind "ClusterRole") (eq $kind "ClusterRoleBinding") }}
+{{- $_ := set $metadata "name" $clusterRoleName }}
+{{- else }}
+{{- $_ := set $metadata "namespace" $root.Release.Namespace }}
+{{- end }}
+{{- if eq $kind "ClusterRoleBinding" }}
+{{- $_ := set $resource.roleRef "name" $clusterRoleName }}
+{{- end }}
+{{- if or (eq $kind "RoleBinding") (eq $kind "ClusterRoleBinding") }}
+{{- range $subject := $resource.subjects }}
+{{- if eq $subject.kind "ServiceAccount" }}
+{{- $_ := set $subject "namespace" $root.Release.Namespace }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if and (eq $kind "PersistentVolumeClaim") $root.Values.monitoring.persistence.retain }}
+{{- $_ := set $metadata "annotations" (merge (dict "helm.sh/resource-policy" "keep") ($metadata.annotations | default dict)) }}
+{{- end }}
+{{- if or (eq $kind "Deployment") (eq $kind "DaemonSet") }}
+{{- $podMetadata := $resource.spec.template.metadata }}
+{{- $_ := set $podMetadata "labels" (merge (dict "app.kubernetes.io/component" "monitoring" "app.kubernetes.io/instance" $root.Release.Name) ($podMetadata.labels | default dict)) }}
+{{- $_ := set $podMetadata "annotations" (merge (dict "checksum/monitoring" $checksum) ($podMetadata.annotations | default dict)) }}
+{{- if eq $metadata.name (printf "%s-cadvisor-network" $base) }}
+{{- $_ := set $resource.spec.template.spec "serviceAccountName" (printf "%s-cadvisor-network" $base) }}
+{{- $_ := set $podMetadata.annotations "playhub.dev/privileged-monitor" "cadvisor-network" }}
+{{- end }}
+{{- if eq $metadata.name (printf "%s-node-exporter" $base) }}
+{{/* Mantiene la red del nodo sin competir con el exporter de manifiestos (9100). */}}
+{{- $port := include "playhub.monitoring.nodeExporterPort" $root | int }}
+{{- $container := index $resource.spec.template.spec.containers 0 }}
+{{- $_ := set $container "args" (append $container.args (printf "--web.listen-address=:%d" $port)) }}
+{{- $_ := set (index $container.ports 0) "containerPort" $port }}
+{{- end }}
+{{- end }}
+{{- if and (eq $kind "ConfigMap") (eq $metadata.name (printf "%s-prometheus-config" $base)) }}
+{{- $config := index $resource.data "prometheus.yml" }}
+{{- $config = replace (printf "%s-backend:8080" $base) (printf "%s-backend:%v" $base $root.Values.backend.service.port) $config }}
+{{- $config = replace (printf "%s-frontend:5745" $base) (printf "%s-frontend:%v" $base $root.Values.frontend.service.port) $config }}
+{{- $_ := set $resource.data "prometheus.yml" $config }}
+{{- end }}
+{{- if and (eq $kind "ConfigMap") (eq $metadata.name (printf "%s-grafana-alerts" $base)) }}
+{{/* Los UID de datasource y reglas permanecen estables dentro de cada Grafana. */}}
+{{- $original := fromYaml $originalText }}
+{{- range $key, $content := $original.data }}
+{{- $_ := set $resource.data $key (include "playhub.monitoring.adaptQueries" (dict "root" $root "content" $content)) }}
+{{- end }}
+{{- end }}
+---
+{{ toYaml $resource }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

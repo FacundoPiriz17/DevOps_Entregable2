@@ -3,7 +3,7 @@ param()
 
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$report = Join-Path $projectRoot 'reports/kyverno-validation-post-mitigacion.txt'
+$report = Join-Path $projectRoot 'reports/kyvernovalidation.log'
 $lines = New-Object 'System.Collections.Generic.List[string]'
 $namespace = 'kyverno-validation'
 $fixture = Join-Path $projectRoot 'tests/kyverno/valid-pod.yaml'
@@ -38,13 +38,29 @@ function Assert-Allowed {
 }
 
 function Assert-Denied {
-    param([string]$Name, [hashtable]$Result, [string[]]$Policies)
+    param([string]$Name, [hashtable]$Result, [string[]]$Policies, [switch]$AnyOf)
     if ($Result.Code -eq 0) { throw "$Name fue aceptado inesperadamente." }
     if ($Result.Text -notmatch 'admission webhook.*denied the request') {
         throw "$Name fallo por una causa distinta del rechazo de admision: $($Result.Text)"
     }
+    $matched = @()
     foreach ($policy in $Policies) {
-        if ($Result.Text -notmatch "(?m)^\s*$([regex]::Escape($policy)):") {
+        $escaped = [regex]::Escape($policy)
+        # ClusterPolicy usa lineas "nombre:"; ValidatingPolicy usa "Policy nombre failed:".
+        if ($Result.Text -match "(?m)^\s*${escaped}:" -or $Result.Text -match "Policy\s+${escaped}\s+failed") {
+            $matched += $policy
+        }
+    }
+    if ($AnyOf) {
+        if (-not $matched.Count) {
+            throw "$Name no fue rechazado por ninguna de $($Policies -join ', ') : $($Result.Text)"
+        }
+        $lines.Add("PASS: $Name rechazado por $($matched -join ', ').")
+        $script:passed++
+        return
+    }
+    foreach ($policy in $Policies) {
+        if ($matched -notcontains $policy) {
             throw "$Name no fue rechazado por $policy : $($Result.Text)"
         }
     }
@@ -67,6 +83,7 @@ New-Item -ItemType Directory -Force (Split-Path -Parent $report) | Out-Null
 $lines.Add('Validacion de admision Kyverno')
 $lines.Add("Fecha UTC: $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ'))")
 $exitCode = 0
+$falcoServiceAccountCreated = $false
 try {
     $context = Invoke-KubeCapture @('config', 'current-context')
     if ($context.Code -ne 0) { throw $context.Text }
@@ -76,11 +93,26 @@ try {
         $ready = Invoke-KubeCapture @('wait', '--for=condition=Ready', "clusterpolicy/$policy", '--timeout=120s')
         if ($ready.Code -ne 0) { throw $ready.Text }
     }
-    $ns = Invoke-KubeCapture @('get', 'namespace', $namespace, '--ignore-not-found', '-o', 'name')
-    if ($ns.Code -ne 0) { throw $ns.Text }
-    if (-not $ns.Text.Trim()) {
-        $ns = Invoke-KubeCapture @('create', 'namespace', $namespace)
+    $ready = Invoke-KubeCapture @('wait', '--for=jsonpath={.status.conditionStatus.ready}=true', 'validatingpolicy/disallow-privilege-escalation', '--timeout=120s')
+    if ($ready.Code -ne 0) { throw $ready.Text }
+    $clusterPolicies = Invoke-KubeCapture @('get', 'clusterpolicy', 'disallow-latest', 'require-resources', 'disallow-root', '-o', 'custom-columns=NAME:.metadata.name,READY:.status.conditions[0].status,ACTION:.spec.rules[0].validate.failureAction')
+    if ($clusterPolicies.Code -ne 0) { throw $clusterPolicies.Text }
+    $privilegePolicy = Invoke-KubeCapture @('get', 'validatingpolicy', 'disallow-privilege-escalation', '-o', 'custom-columns=NAME:.metadata.name,READY:.status.conditionStatus.ready,ACTIONS:.spec.validationActions')
+    if ($privilegePolicy.Code -ne 0) { throw $privilegePolicy.Text }
+    foreach ($nsName in @($namespace, 'falco')) {
+        $ns = Invoke-KubeCapture @('get', 'namespace', $nsName, '--ignore-not-found', '-o', 'name')
         if ($ns.Code -ne 0) { throw $ns.Text }
+        if (-not $ns.Text.Trim()) {
+            $ns = Invoke-KubeCapture @('create', 'namespace', $nsName)
+            if ($ns.Code -ne 0) { throw $ns.Text }
+        }
+    }
+    $falcoSa = Invoke-KubeCapture @('get', 'serviceaccount', 'falco', '-n', 'falco', '--ignore-not-found', '-o', 'name')
+    if ($falcoSa.Code -ne 0) { throw $falcoSa.Text }
+    if (-not $falcoSa.Text.Trim()) {
+        $falcoSa = Invoke-KubeCapture @('create', 'serviceaccount', 'falco', '-n', 'falco')
+        if ($falcoSa.Code -ne 0) { throw $falcoSa.Text }
+        $falcoServiceAccountCreated = $true
     }
     $base = Invoke-KubeCapture @('create', '--dry-run=client', '-f', $fixture, '-o', 'json')
     if ($base.Code -ne 0) { throw $base.Text }
@@ -96,6 +128,33 @@ try {
         $p.spec.containers[0].securityContext | Add-Member runAsNonRoot $true
         $p.spec.containers[0].securityContext | Add-Member runAsUser 1000
     } @()
+    Test-Pod 'missing-privilege-escalation' { param($p)
+        $p.spec.containers[0].securityContext.PSObject.Properties.Remove('allowPrivilegeEscalation')
+    } @('disallow-privilege-escalation')
+    Test-Pod 'privilege-escalation-true' { param($p)
+        $p.spec.containers[0].securityContext.allowPrivilegeEscalation = $true
+    } @('disallow-privilege-escalation')
+    Test-Pod 'missing-container-security-context' { param($p)
+        $p.spec.containers[0].PSObject.Properties.Remove('securityContext')
+    } @('disallow-privilege-escalation')
+    Test-Pod 'second-container-no-privilege-escalation' { param($p)
+        $other = $p.spec.containers[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $other.name = 'other'
+        $other.securityContext.PSObject.Properties.Remove('allowPrivilegeEscalation')
+        $p.spec.containers = @($p.spec.containers[0], $other)
+    } @('disallow-privilege-escalation')
+    Test-Pod 'fake-cadvisor-privilege-escalation' { param($p)
+        $p.metadata.namespace = 'default'
+        $p.metadata.labels.app = 'playhub-cadvisor-network'
+        $p.metadata | Add-Member ownerReferences @(@{ apiVersion = 'apps/v1'; kind = 'DaemonSet'; name = 'playhub-cadvisor-network'; uid = '00000000-0000-0000-0000-000000000001'; controller = $true })
+        $p.spec.containers[0].securityContext.allowPrivilegeEscalation = $true
+    } @('disallow-privilege-escalation')
+    Test-Pod 'fake-falco-privilege-escalation' { param($p)
+        $p.metadata.namespace = 'falco'
+        $p.metadata | Add-Member ownerReferences @(@{ apiVersion = 'apps/v1'; kind = 'DaemonSet'; name = 'falco'; uid = '00000000-0000-0000-0000-000000000001'; controller = $true })
+        $p.spec | Add-Member serviceAccountName 'falco'
+        $p.spec.containers[0].securityContext.allowPrivilegeEscalation = $true
+    } @('disallow-privilege-escalation')
     Test-Pod 'no-resources' { param($p) $p.spec.containers[0].PSObject.Properties.Remove('resources') } @('require-resources')
     Test-Pod 'no-memory-limit' { param($p) $p.spec.containers[0].resources.limits.PSObject.Properties.Remove('memory') } @('require-resources')
     Test-Pod 'no-cpu-limit' { param($p) $p.spec.containers[0].resources.limits.PSObject.Properties.Remove('cpu') } @('require-resources')
@@ -131,7 +190,7 @@ try {
         $other.PSObject.Properties.Remove('resources')
         $p.spec.containers = @($p.spec.containers[0], $other)
     } @('require-resources')
-    foreach ($violation in @('latest', 'resources', 'root')) {
+    foreach ($violation in @('latest', 'resources', 'root', 'privilege')) {
         $mutate = {
             param($p)
             $init = $p.spec.containers[0] | ConvertTo-Json -Depth 20 | ConvertFrom-Json
@@ -141,10 +200,11 @@ try {
                 'latest' { $init.image = 'busybox:latest' }
                 'resources' { $init.PSObject.Properties.Remove('resources') }
                 'root' { $init.securityContext | Add-Member runAsUser 0 }
+                'privilege' { $init.securityContext.allowPrivilegeEscalation = $true }
             }
             $p.spec | Add-Member initContainers @($init)
         }.GetNewClosure()
-        $policy = @{ latest = 'disallow-latest'; resources = 'require-resources'; root = 'disallow-root' }[$violation]
+        $policy = @{ latest = 'disallow-latest'; resources = 'require-resources'; root = 'disallow-root'; privilege = 'disallow-privilege-escalation' }[$violation]
         Test-Pod "init-$violation" $mutate @($policy)
     }
 
@@ -211,9 +271,12 @@ try {
         $passed++
     }
 
-    # Intento real de creacion: debe fallar por las tres politicas, no por sintaxis.
+    # Intento real de creacion: debe fallar por admision, no por sintaxis.
+    # Ante varias violaciones Kubernetes puede informar solo uno de los webhooks;
+    # cada politica ya se verifico por separado en los casos anteriores.
+    $lines.Add('Nota: invalid-pod.yaml viola las cuatro politicas; la API puede mostrar solo uno de los rechazos.')
     $invalid = Invoke-KubeCapture @('create', '-f', $invalidFixture)
-    Assert-Denied 'invalid-pod.yaml (creacion real)' $invalid @('disallow-latest', 'require-resources', 'disallow-root')
+    Assert-Denied 'invalid-pod.yaml (creacion real)' $invalid @('disallow-latest', 'require-resources', 'disallow-root', 'disallow-privilege-escalation') -AnyOf
     $absent = Invoke-KubeCapture @('get', 'pod', 'kyverno-invalid', '-n', $namespace, '--ignore-not-found', '-o', 'name')
     if ($absent.Code -ne 0 -or $absent.Text.Trim()) { throw 'El Pod invalido no deberia existir.' }
 
@@ -230,22 +293,23 @@ try {
 
     # Kubernetes prohibe resources en contenedores efimeros. Se prueban por
     # su subrecurso real, con dryRun=All, para no modificar el Pod valido.
-    foreach ($violation in @('latest', 'root', 'valid')) {
+    foreach ($violation in @('latest', 'root', 'privilege', 'valid')) {
         $current = Invoke-KubeCapture @('get', 'pod', 'kyverno-valid', '-n', $namespace, '-o', 'json')
         if ($current.Code -ne 0) { throw $current.Text }
         $pod = $current.Text | ConvertFrom-Json
         $ephemeral = @{
             name = "debug-$violation"; image = 'busybox:1.37.0'; command = @('true')
-            securityContext = @{ runAsNonRoot = $true; runAsUser = 1000 }
+            securityContext = @{ runAsNonRoot = $true; runAsUser = 1000; allowPrivilegeEscalation = $false }
         }
         if ($violation -eq 'latest') { $ephemeral.image = 'busybox:latest' }
         if ($violation -eq 'root') { $ephemeral.securityContext.runAsUser = 0 }
+        if ($violation -eq 'privilege') { $ephemeral.securityContext.allowPrivilegeEscalation = $true }
         $pod.spec | Add-Member ephemeralContainers @($ephemeral)
         $url = "/api/v1/namespaces/$namespace/pods/kyverno-valid/ephemeralcontainers?dryRun=All"
         $result = Invoke-KubeCapture @('replace', '--raw', $url, '-f', '-') ($pod | ConvertTo-Json -Depth 40)
         if ($violation -eq 'valid') { Assert-Allowed 'ephemeral valido sin resources (API Kubernetes)' $result }
         else {
-            $policy = @{ latest = 'disallow-latest'; root = 'disallow-root' }[$violation]
+            $policy = @{ latest = 'disallow-latest'; root = 'disallow-root'; privilege = 'disallow-privilege-escalation' }[$violation]
             Assert-Denied "ephemeral-$violation" $result @($policy)
         }
     }
@@ -257,6 +321,10 @@ try {
     if ($createdPod) {
         $cleanup = Invoke-KubeCapture @('delete', 'pod', 'kyverno-valid', '-n', $namespace, '--wait=false')
         if ($cleanup.Code -ne 0) { $lines.Add('FAIL: no se pudo limpiar el Pod de prueba.'); $exitCode = 1 }
+    }
+    if ($falcoServiceAccountCreated) {
+        $cleanup = Invoke-KubeCapture @('delete', 'serviceaccount', 'falco', '-n', 'falco', '--ignore-not-found')
+        if ($cleanup.Code -ne 0) { $lines.Add('FAIL: no se pudo limpiar el ServiceAccount de prueba.'); $exitCode = 1 }
     }
     $lines | Set-Content -LiteralPath $report -Encoding UTF8
 }

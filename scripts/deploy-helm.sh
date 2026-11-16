@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 set -euo pipefail
 
 environment="dev"
@@ -6,6 +7,8 @@ release_name="playhub"
 skip_build=false
 skip_image_load=false
 no_port_forward=false
+skip_security=false
+adopt_security=false
 db_password=""
 jwt_secret=""
 admin_password=""
@@ -22,9 +25,11 @@ usage() {
     "  --release-name NOMBRE       Nombre del release (default: playhub)." \
     "  --skip-build                No reconstruye las imagenes." \
     "  --skip-image-load           No importa las imagenes a Minikube." \
-    "  --no-port-forward           No abre los port-forward (solo dev)." \
+    "  --no-port-forward           No abre los accesos de aplicacion ni monitoreo." \
+    "  --skip-security             No instala Kyverno/Falco (stack compartido)." \
+    "  --adopt-security            Registra el stack existente compatible de PlayHub." \
     "  --db-password VALOR         Solo prod: contrasena de PostgreSQL." \
-    "  --jwt-secret VALOR          Solo prod: secreto JWT (32+ caracteres)." \
+    "  --jwt-secret VALOR          Solo prod: secreto JWT (48+ bytes UTF-8)." \
     "  --admin-password VALOR      Solo prod: contrasena del administrador." \
     "  -h, --help                  Muestra esta ayuda." \
     "" \
@@ -70,6 +75,14 @@ while (($# > 0)); do
       no_port_forward=true
       shift
       ;;
+    --skip-security)
+      skip_security=true
+      shift
+      ;;
+    --adopt-security)
+      adopt_security=true
+      shift
+      ;;
     --db-password)
       need_value "$@"
       db_password="$2"
@@ -97,6 +110,11 @@ while (($# > 0)); do
   esac
 done
 
+if [[ "$skip_security" == true && "$adopt_security" == true ]]; then
+  echo '--skip-security y --adopt-security no se pueden combinar.' >&2
+  exit 2
+fi
+
 case "$environment" in
   dev|prod) ;;
   *)
@@ -107,6 +125,7 @@ esac
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd "$script_dir/.." && pwd)"
+source "$script_dir/lib/security-stack.sh"
 secrets_file=""
 
 require_command() {
@@ -139,14 +158,16 @@ yaml_single_quote() {
 stop_helm_port_forward() {
   local name pid_file pid
 
-  for name in backend frontend; do
+  for name in backend frontend prometheus grafana; do
     pid_file="$project_root/logs/helm-port-forward-$name.pid"
 
     if [[ -f "$pid_file" ]]; then
       pid="$(cat "$pid_file")"
 
-      if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-        kill "$pid" 2>/dev/null || true
+      if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+        if [[ "$(process_name_of "$pid")" == *kubectl* ]]; then
+          kill "$pid" 2>/dev/null || true
+        fi
       fi
 
       rm -f "$pid_file"
@@ -205,8 +226,23 @@ start_helm_port_forward() {
   local name="$1"
   local service="$2"
   local port="$3"
+  local optional="${4:-false}"
+  local remote_port
   local pid_file="$project_root/logs/helm-port-forward-$name.pid"
   local log_file="$project_root/logs/helm-port-forward-$name.log"
+
+  if ! remote_port="$(kubectl get service "$service" -n "$namespace" --ignore-not-found=true -o jsonpath='{.spec.ports[0].port}')"; then
+    echo "No se pudo consultar el Service '$service'." >&2
+    return 1
+  fi
+  if [[ "$optional" == true && -z "$remote_port" ]]; then
+    echo "Service opcional '$service' deshabilitado; se omite su port-forward."
+    return 0
+  fi
+  if [[ ! "$remote_port" =~ ^[0-9]+$ ]]; then
+    echo "El Service '$service' no tiene un puerto disponible." >&2
+    return 1
+  fi
 
   if ! free_port "$port"; then
     return 1
@@ -214,13 +250,13 @@ start_helm_port_forward() {
 
   mkdir -p "$project_root/logs"
 
-  kubectl port-forward -n "$namespace" "svc/$service" "$port:$port" >"$log_file" 2>&1 &
+  kubectl port-forward -n "$namespace" "svc/$service" "$port:$remote_port" >"$log_file" 2>&1 &
   disown
   echo "$!" >"$pid_file"
 
   for _ in {1..10}; do
     if grep -q "Forwarding from" "$log_file" 2>/dev/null; then
-      echo "Port-forward activo: svc/$service -> $port:$port (log: $log_file)"
+      echo "Port-forward activo: svc/$service -> $port:$remote_port (log: $log_file)"
       return 0
     fi
     sleep 0.5
@@ -262,7 +298,11 @@ fi
 
 if [[ "$environment" == "prod" ]]; then
   if [[ -z "$db_password" || -z "$jwt_secret" || -z "$admin_password" ]]; then
-    echo "En prod hay que pasar --db-password, --jwt-secret (32+ caracteres) y --admin-password." >&2
+    echo "En prod hay que pasar --db-password, --jwt-secret (48+ bytes UTF-8) y --admin-password." >&2
+    exit 2
+  fi
+  if [[ "$(printf '%s' "$jwt_secret" | wc -c)" -lt 48 ]]; then
+    echo '--jwt-secret requiere al menos 48 bytes UTF-8 para HS384.' >&2
     exit 2
   fi
   frontend_tag="v1.0-prod"
@@ -291,9 +331,19 @@ fi
 if [[ "$skip_image_load" == false ]]; then
   if [[ "$current_context" == "minikube" ]]; then
     require_command minikube
+    require_command docker
     echo "Cargando imagenes en Minikube..."
-    minikube image load --overwrite=true "$backend_image"
-    minikube image load --overwrite=true "$frontend_image"
+    mkdir -p "$project_root/.tmp"
+    archive_directory="$(mktemp -d "$project_root/.tmp/helm-images.XXXXXXXX")"
+    image_archive="$archive_directory/images.tar"
+    import_status=0
+    docker save --output "$image_archive" "$backend_image" "$frontend_image" || import_status=$?
+    if [[ "$import_status" -eq 0 ]]; then
+      minikube image load --overwrite=true "$image_archive" || import_status=$?
+    fi
+    rm -f "$image_archive"
+    rmdir "$archive_directory"
+    if [[ "$import_status" -ne 0 ]]; then exit "$import_status"; fi
   else
     echo "Aviso: el contexto '$current_context' no es minikube; no se cargaron las imagenes. Deben existir en el cluster." >&2
   fi
@@ -303,6 +353,14 @@ fi
 
 echo "Validando el chart (helm lint)..."
 helm lint "$chart_path" -f "$values_file"
+
+if [[ "$skip_security" == false ]]; then
+  security_args=()
+  if [[ "$adopt_security" == true ]]; then security_args+=(--adopt-existing); fi
+  initialize_playhub_security "$project_root" "${security_args[@]}"
+else
+  echo "Se omite la instalacion de Kyverno y Falco (--skip-security)."
+fi
 
 echo "Instalando / actualizando el release con Helm (entorno $environment)..."
 helm_args=(
@@ -347,26 +405,35 @@ if [[ "$environment" == "prod" ]]; then
   echo "Acceso por Ingress: http://playhub.local"
   echo "Requiere: minikube addons enable ingress, 'minikube tunnel' corriendo y"
   echo "la linea '127.0.0.1 playhub.local' en el archivo hosts del sistema."
-elif [[ "$no_port_forward" == false ]]; then
+fi
+if [[ "$no_port_forward" == false ]]; then
   stop_helm_port_forward
 
-  backend_ok=true
-  frontend_ok=true
-  start_helm_port_forward backend "$base_name-backend" 8080 || backend_ok=false
-  start_helm_port_forward frontend "$base_name-frontend" 5745 || frontend_ok=false
+  access_ok=true
+  if [[ "$environment" == "dev" ]]; then
+    start_helm_port_forward backend "$base_name-backend" 8080 || access_ok=false
+    start_helm_port_forward frontend "$base_name-frontend" 5745 || access_ok=false
+  fi
+  start_helm_port_forward prometheus "$base_name-prometheus" 9090 true || access_ok=false
+  start_helm_port_forward grafana "$base_name-grafana" 3000 true || access_ok=false
 
   echo
 
-  if [[ "$backend_ok" == false || "$frontend_ok" == false ]]; then
+  if [[ "$access_ok" == false ]]; then
     echo "El despliegue termino, pero algun port-forward no pudo iniciarse (ver mensajes arriba)." >&2
     exit 1
   fi
 
-  echo "Frontend disponible en: http://localhost:5745"
-  echo "Backend disponible en:  http://localhost:8080/actuator/health"
-  echo "Para detenerlos: kill \$(cat logs/helm-port-forward-backend.pid) \$(cat logs/helm-port-forward-frontend.pid)"
+  if [[ "$environment" == "dev" ]]; then
+    echo "Frontend disponible en: http://localhost:5745"
+    echo "Backend disponible en:  http://localhost:8080/actuator/health"
+  fi
+  echo "Monitoreo habilitado: Prometheus http://localhost:9090 y Grafana http://localhost:3000"
+  echo "Para detener los accesos y limpiar el release: bash scripts/cleanup-helm.sh"
 else
   echo "Aviso: se omitio el inicio automatico de port-forward (--no-port-forward)." >&2
   echo "Manual: kubectl port-forward -n $namespace svc/$base_name-backend 8080:8080"
   echo "        kubectl port-forward -n $namespace svc/$base_name-frontend 5745:5745"
+  echo "        kubectl port-forward -n $namespace svc/$base_name-prometheus 9090:9090"
+  echo "        kubectl port-forward -n $namespace svc/$base_name-grafana 3000:3000"
 fi
