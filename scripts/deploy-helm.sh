@@ -437,3 +437,4 @@ else
   echo "        kubectl port-forward -n $namespace svc/$base_name-prometheus 9090:9090"
   echo "        kubectl port-forward -n $namespace svc/$base_name-grafana 3000:3000"
 fi
+

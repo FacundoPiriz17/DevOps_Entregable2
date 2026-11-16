@@ -161,3 +161,4 @@ case ":$PATH:" in
     echo "  echo 'export PATH=\"$install_dir:\$PATH\"' >> ~/.bashrc && source ~/.bashrc"
     ;;
 esac
+
