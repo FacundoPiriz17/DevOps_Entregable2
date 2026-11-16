@@ -206,11 +206,11 @@ El consolidado `reports/trivyreport.txt` contiene las tablas de ambas imágenes.
 
 ## Seguridad en Kubernetes con Kyverno y KubeLinter
 
-Esta parte del entregable incorpora tres políticas de admisión para impedir
-imágenes `latest`, exigir recursos y evitar contenedores root. Las políticas
-están en modo **Enforce**: Kubernetes rechaza las solicitudes que incumplen las
-reglas. Los resultados reales se guardan en `reports/kyverno-validation-post-mitigacion.txt`
-y `reports/kubelinter.txt`.
+Esta parte del entregable incorpora cuatro políticas de admisión para impedir
+imágenes `latest`, exigir recursos, evitar contenedores root y bloquear la
+escalada de privilegios. Las políticas están configuradas en modo bloqueante: Kubernetes
+rechaza las solicitudes que incumplen las reglas. Los resultados reales se
+guardan en `reports/kyvernovalidation.log` y `reports/kubelinter.txt`.
 
 ### Archivos
 
@@ -219,8 +219,9 @@ y `reports/kubelinter.txt`.
 | `k8s/kyverno/disallow-latest.yaml`   | Prohibir `latest` explícito e implícito.             |
 | `k8s/kyverno/require-resources.yaml` | Exigir requests y limits positivos de CPU y memoria. |
 | `k8s/kyverno/disallow-root.yaml`     | Exigir ejecución sin root y prohibir UID 0.          |
+| `k8s/kyverno/disallow-privilege-escalation.yaml` | Exigir `allowPrivilegeEscalation: false` en cada contenedor. |
 | `tests/kyverno/valid-pod.yaml`       | Pod válido que ejecuta con UID 1000.                 |
-| `tests/kyverno/invalid-pod.yaml`     | Pod que incumple las tres políticas.                 |
+| `tests/kyverno/invalid-pod.yaml`     | Pod que incumple las cuatro políticas.               |
 | `scripts/install-kyverno.ps1`        | Instalar Kyverno y aplicar las políticas.            |
 | `scripts/validate-kyverno.ps1`       | Ejecutar las pruebas y guardar la evidencia.         |
 | `scripts/lint-kubernetes.ps1`        | Ejecutar KubeLinter y guardar todos sus hallazgos.   |
@@ -234,8 +235,14 @@ Se utilizan `ClusterPolicy` de `kyverno.io/v1`, compatibles con Kyverno 1.19.2.
 Esta versión conserva su soporte, aunque declara estas API obsoletas.
 `background: true` se conserva en las políticas de imágenes y recursos. La
 política sin root usa `background: false` porque comprueba la identidad de la
-solicitud de admisión. Las tres mantienen **Enforce** y
+solicitud de admisión. Las tres `ClusterPolicy` mantienen **Enforce** y
 `allowExistingViolations: false`; no se desactivan para desplegar Falco.
+
+La cuarta política es una `ValidatingPolicy` de `policies.kyverno.io/v1` en
+modo **Deny**. Exige `allowPrivilegeEscalation: false` explícito en containers,
+initContainers y ephemeralContainers. Exceptúa únicamente los Pods de cAdvisor
+y Falco creados por el controlador de DaemonSets; los labels u owners imitados
+por una creación manual no alcanzan para saltar la política.
 
 Las reglas cubren todos los namespaces de aplicaciones, sin depender de un
 label de habilitación. Se excluyen `kube-system`, `kube-public`, `kube-node-lease`
@@ -358,20 +365,22 @@ kubectl config current-context
 
 El instalador descarga el manifiesto de la versión oficial fijada y utiliza
 `kubectl apply --server-side`, para evitar el límite de anotaciones de los CRD
-grandes. Espera que los cuatro controladores estén disponibles y que las tres
-políticas indiquen `Ready`.
+grandes. Espera que los cuatro controladores estén disponibles y que las cuatro
+políticas indiquen `Ready`; la `ValidatingPolicy` se comprueba con
+`status.conditionStatus.ready`.
 
 ### Validación y evidencia
 
 El script guarda los comandos, respuestas del API server, códigos de salida y
-comprobaciones en `reports/kyverno-validation-post-mitigacion.txt`. Un rechazo solo cuenta como
+comprobaciones en `reports/kyvernovalidation.log`. Un rechazo solo cuenta como
 correcto si proviene del webhook y menciona la política esperada; un error de
 conexión, sintaxis o descarga no se considera evidencia de bloqueo.
 
 Las pruebas cubren etiquetas explícitas e implícitas, digest, puertos de
-registro, recursos ausentes y cero, UID 0, herencia y sobrescritura del contexto
-de seguridad, un segundo contenedor, initContainers, los Pod templates del
-proyecto y la excepción de cAdvisor. También se comprueba el subrecurso real
+registro, recursos ausentes y cero, UID 0, escalada de privilegios en
+containers, initContainers y ephemeralContainers, herencia y sobrescritura del
+contexto de seguridad, un segundo contenedor, los Pod templates del proyecto y
+las excepciones de cAdvisor y Falco. También se comprueba el subrecurso real
 `pods/ephemeralcontainers` con operaciones `dryRun=All`.
 
 Para comprobar los Pod templates sin instalar toda la aplicación, se utiliza
@@ -389,13 +398,12 @@ kubectl create -f tests/kyverno/invalid-pod.yaml
 ```
 
 Si el namespace ya existe, se omite su creación. La segunda orden debe devolver
-un código distinto de cero y mencionar las tres políticas:
+un código distinto de cero y mencionar al menos una de las cuatro políticas;
+ante varias violaciones Kubernetes puede informar solo uno de los webhooks:
 
 ```text
-admission webhook "validate.kyverno.svc-fail" denied the request
-disallow-latest
-disallow-root
-require-resources
+admission webhook "vpol.validate.kyverno.svc-fail-finegrained-disallow-privilege-escalation" denied the request
+Policy disallow-privilege-escalation failed: Debe definirse allowPrivilegeEscalation: false en cada contenedor.
 ```
 
 El Pod inválido no llega a persistirse. El script también crea el Pod válido,
@@ -403,15 +411,15 @@ espera a que esté `Ready`, ejecuta `id -u` y verifica el valor **1000**. Al
 terminar elimina únicamente el Pod válido que creó; deja el namespace de pruebas
 para repetir la demo. Si ese Pod ya existe, falla sin sobrescribirlo.
 
-El 10 de noviembre de 2026 se generó el reporte de validación con
-**45 comprobaciones correctas**. Incluye el template de Falco, los cuatro Pods
-auxiliares y el rechazo de metadatos de infraestructura imitados. Se verificó
-el rechazo real del Pod inválido y la ejecución del válido con UID 1000. Para
-repetir la demostración:
+El 15 de noviembre de 2026 se generó el reporte de validación con
+**53 comprobaciones correctas**. Incluye el template de Falco, los cuatro Pods
+auxiliares, el rechazo de metadatos de infraestructura imitados y las pruebas
+de `allowPrivilegeEscalation`. Se verificó el rechazo real del Pod inválido y la
+ejecución del válido con UID 1000. Para repetir la demostración:
 
 ```powershell
 .\scripts\validate-kyverno.ps1
-Get-Content reports/kyverno-validation-post-mitigacion.txt
+Get-Content reports/kyvernovalidation.log
 ```
 
 ### Resultado de KubeLinter
@@ -542,5 +550,5 @@ Get-Content reports/falco-event.log
 | Trivy frontend | `reports/trivyreports_frontend.txt` | `reports/trivyreports_frontend-post-mitigacion.txt` |
 | Trivy backend | `reports/trivyreports_backend.txt` | `reports/trivyreports_backend-post-mitigacion.txt` |
 | KubeLinter | `reports/kubelinter-inicial.txt` | `reports/kubelinter.txt`, con el nombre obligatorio |
-| Kyverno | `reports/kyverno-validation.txt` | `reports/kyverno-validation-post-mitigacion.txt` |
+| Kyverno | `reports/kyverno-validation.txt` | `reports/kyvernovalidation.log` |
 | Falco | `reports/falco/falco-report-2026-11-04_14-17-09.txt` | `reports/falco/falco-report-2026-11-10_11-11-00.txt` y alerta obligatoria `reports/falco-event.log` |

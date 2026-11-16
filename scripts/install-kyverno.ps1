@@ -33,3 +33,5 @@ foreach ($policy in @('disallow-latest', 'require-resources', 'disallow-root')) 
     & kubectl wait --for=condition=Ready "clusterpolicy/$policy" --timeout=120s
     if ($LASTEXITCODE -ne 0) { throw "La politica $policy no esta lista." }
 }
+& kubectl wait --for=jsonpath='{.status.conditionStatus.ready}'=true validatingpolicy/disallow-privilege-escalation --timeout=120s
+if ($LASTEXITCODE -ne 0) { throw 'La politica disallow-privilege-escalation no esta lista.' }

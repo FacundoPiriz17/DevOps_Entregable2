@@ -1,0 +1,51 @@
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: disallow-privilege-escalation
+spec:
+  validationActions: [Deny]
+  evaluation:
+    background:
+      enabled: false
+  matchConditions:
+    - name: exempt-known-privileged-daemonsets
+      expression: |-
+        !(
+          request.?userInfo.?username.orValue('') == 'system:serviceaccount:kube-system:daemon-set-controller' &&
+          has(object.metadata.ownerReferences) &&
+          object.metadata.ownerReferences.exists(o,
+            has(o.controller) && o.controller == true &&
+            (
+              (object.metadata.namespace == 'default' &&
+               o.kind == 'DaemonSet' && o.name == 'playhub-cadvisor-network' &&
+               has(object.metadata.labels) && 'app' in object.metadata.labels &&
+               object.metadata.labels['app'] == 'playhub-cadvisor-network') ||
+              (object.metadata.namespace == 'falco' &&
+               o.kind == 'DaemonSet' && o.name == 'falco' &&
+               has(object.spec.serviceAccountName) &&
+               object.spec.serviceAccountName == 'falco')
+            )
+          )
+        )
+  matchConstraints:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [kube-system, kube-public, kube-node-lease, kyverno]
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods", "pods/ephemeralcontainers"]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers +
+        object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.allContainers.all(c,
+          c.?securityContext.?allowPrivilegeEscalation.orValue(true) == false)
+      message: "Debe definirse allowPrivilegeEscalation: false en cada contenedor."
