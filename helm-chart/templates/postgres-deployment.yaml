@@ -29,12 +29,18 @@ spec:
         - name: postgres
           image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
           imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          args:
+            - postgres
+            - -p
+            - {{ .Values.postgres.port | quote }}
           securityContext:
             allowPrivilegeEscalation: false
           ports:
             - name: postgres
               containerPort: {{ .Values.postgres.port }}
           env:
+            - name: PGPORT
+              value: {{ .Values.postgres.port | quote }}
             - name: POSTGRES_DB
               valueFrom:
                 configMapKeyRef:
