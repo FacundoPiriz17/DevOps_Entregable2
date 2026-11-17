@@ -7,6 +7,8 @@ metadata:
     app.kubernetes.io/component: backend
 spec:
   replicas: {{ .Values.backend.replicaCount }}
+  strategy:
+    {{- toYaml .Values.backend.strategy | nindent 4 }}
   revisionHistoryLimit: 3
   progressDeadlineSeconds: 360
   selector:
@@ -91,6 +93,14 @@ spec:
           env:
             - name: SERVER_PORT
               value: {{ .Values.backend.containerPort | quote }}
+            - name: MANAGEMENT_METRICS_TAGS_POD
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MANAGEMENT_METRICS_TAGS_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           startupProbe:
             httpGet:
               path: /actuator/health/liveness

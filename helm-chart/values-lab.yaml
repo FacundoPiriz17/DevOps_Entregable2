@@ -1,0 +1,41 @@
+# Perfil para la cuota compartida del laboratorio. Se aplica despues de dev/prod.
+# Recreate evita el consumo adicional de pods durante las actualizaciones.
+backend:
+  replicaCount: 1
+  strategy: {type: Recreate}
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 350m, memory: 768Mi}
+frontend:
+  replicaCount: 1
+  strategy: {type: Recreate}
+  resources:
+    requests: {cpu: 25m, memory: 128Mi}
+    limits: {cpu: 100m, memory: 256Mi}
+postgres:
+  persistence:
+    size: 1Gi
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 150m, memory: 384Mi}
+migrations:
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 250m, memory: 512Mi}
+monitoring:
+  mode: namespace
+  persistence:
+    # La cuota actual ya tiene 3/3 PVC. La base de datos sigue siendo persistente.
+    enabled: false
+  prometheus:
+    resources:
+      requests: {cpu: 25m, memory: 64Mi}
+      limits: {cpu: 100m, memory: 256Mi}
+  grafana:
+    resources:
+      requests: {cpu: 25m, memory: 64Mi}
+      limits: {cpu: 100m, memory: 256Mi}
+  blackboxExporter:
+    resources:
+      requests: {cpu: 10m, memory: 16Mi}
+      limits: {cpu: 50m, memory: 64Mi}

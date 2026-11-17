@@ -129,7 +129,7 @@ Si las imágenes fueron publicadas por Jenkins, definir `IMAGE_TAG` con el tag q
 
 Este ejemplo utiliza los nombres predeterminados del job; no afirma que el archivo `team9.kubeconfig`, las credenciales, DNS o permisos estén incluidos en Git. `--skip-security` conserva las instalaciones administradas por la plataforma. El script exige `REG_USER` y `REG_PASS` y crea el imagePullSecret incluso si las imágenes son públicas.
 
-La ruta remota omite build, carga a Minikube y port-forward. También deshabilita siempre Prometheus y Grafana del release. El parámetro `--no-monitoring` solo hace explícita esa omisión; actualmente no existe una opción remota que vuelva a habilitar el monitoreo completo.
+La ruta remota omite build, carga a Minikube y port-forward. Habilita Prometheus y Grafana en modo `namespace` y aplica el perfil `lab` por defecto. El descubrimiento usa DNS y no necesita Roles ni acceso a nodos. El monitoreo usa `emptyDir` para no consumir PVC adicionales; sus historicos se pierden al recrear los pods. PostgreSQL conserva su PVC. Los limites de CPU de PlayHub suman 850m sin el pod temporal de Helm test (100m). `--no-monitoring` lo deshabilita; `--resource-profile standard --monitoring-mode cluster` requiere cuotas y permisos de infraestructura suficientes.
 
 Para TLS gestionado por el propio Ingress, se agregan `--tls --tls-issuer NOMBRE`, siempre que exista cert-manager y ese ClusterIssuer. Si HTTPS termina en la plataforma, como en el ejemplo, se utiliza `--public-scheme https` sin `--tls`.
 
@@ -152,9 +152,12 @@ Para TLS gestionado por el propio Ingress, se agregan `--tls --tls-issuer NOMBRE
 | `--tls` | Habilita TLS y anotación de cert-manager en el Ingress. |
 | `--tls-issuer NOMBRE` | `letsencrypt-prod`; se consulta si se activa TLS. |
 | `--tls-secret NOMBRE` | `<release>-tls`. |
-| `--verify` | Comprueba la URL pública `/login` después de Helm y sus tests. |
+| `--verify` | Exige `/login` 200 y `/api/games` 401 sin autenticar; detecta un backend 503. |
 | `--wait-timeout DURACIÓN` | `10m` remoto y `5m` local. |
-| `--no-monitoring` | Deshabilita monitoreo; en remoto ya se omite automáticamente. |
+| `--no-monitoring` | Deshabilita monitoreo. |
+| `--monitoring-mode namespace\|cluster` | Remoto: `namespace`; local: `cluster`. |
+| `--resource-profile lab\|standard` | Remoto: `lab`; local: `standard`. El perfil lab prevalece sobre el dimensionamiento dev/prod. |
+| `--recover-pending-install` | Recupera exclusivamente el primer install pendiente de mas de una hora, con PVC retenido. No recupera upgrades pendientes. |
 | `--skip-security` | No instala ni adopta Kyverno/Falco. |
 | `--adopt-security` | Registra una instalación compatible del proyecto. No se combina con `--skip-security`. |
 
@@ -183,7 +186,7 @@ kubectl --kubeconfig ./team9.kubeconfig get deployments -n alumno-team9 \
   -o 'custom-columns=NAME:.metadata.name,IMAGES:.spec.template.spec.containers[*].image'
 ```
 
-`--verify` comprueba `/login`; no realiza una compra ni verifica los dashboards. El script de demo requiere acceso a Prometheus y no debe asumirse disponible sobre el despliegue remoto que omite monitoreo.
+`--verify` comprueba frontend y API; no realiza una compra ni verifica los dashboards. Para mostrar HTTP y negocio, consultar [monitoreo limitado al namespace](../../monitoring/README.md#monitoreo-limitado-al-namespace-del-laboratorio).
 
 Para los logs, con el release predeterminado:
 
@@ -216,19 +219,20 @@ Este comando no elimina el namespace compartido, las imágenes del registry ni e
 Con Semgrep instalado en el entorno de ejecución, la invocación equivalente a la etapa actual es:
 
 ```bash
-mkdir -p reports
+mkdir -p reports/ci
 semgrep --version
 semgrep scan \
+  --oss-only --jobs=2 --timeout=15 \
   --config security/semgrep/rules \
-  --config p/security-audit \
-  --config p/owasp-top-ten \
   --exclude node_modules --exclude .next --exclude target \
-  --severity ERROR \
-  --metrics=off \
-  --json --output reports/semgrep.json .
+  --exclude .tmp --exclude reports --exclude docs/generated \
+  --exclude security/semgrep/rules \
+  --severity ERROR --error \
+  --metrics=off --disable-version-check \
+  --json --output reports/ci/semgrep.json .
 ```
 
-El punto final selecciona la raíz del checkout, equivalente al destino implícito de la etapa. Las dos reglas remotas requieren acceso al registry de Semgrep. La invocación actual no incluye `--error`: no se documenta como bloqueo por hallazgos.
+El punto final selecciona la raíz del checkout, equivalente al destino implícito de la etapa. Usa las reglas versionadas, sin descargarlas en cada corrida. `--error` bloquea la pipeline ante hallazgos de severidad ERROR.
 
 ## Diagnóstico
 
@@ -240,6 +244,6 @@ El punto final selecciona la raíz del checkout, equivalente al destino implíci
 | No se encuentra un tag en Kubernetes | Comparar el tag del build/push con `--image-tag` y los repositorios efectivos. |
 | Error de secretos o JWT | Revisar las tres claves del archivo y longitud del JWT, sin imprimir los valores en consola. |
 | Ingress/TLS no verificable | Revisar DNS, IngressClass, terminación HTTPS y, si se usa `--tls`, el ClusterIssuer. |
-| No aparecen Grafana/Prometheus tras el deploy | Es el comportamiento actual de la ruta remota; no se intenta instalar esos recursos. |
+| No aparecen Grafana/Prometheus tras el deploy | Revisar `MONITORING_MODE`, cuotas y eventos. El modo namespace los habilita por defecto. |
 
 El detalle del flujo y sus pendientes se mantiene en [jenkins/README.md](../../jenkins/README.md).

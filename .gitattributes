@@ -3,3 +3,7 @@
 
 # Flyway calcula checksums sobre estos archivos; deben ser identicos en cada SO.
 backend/src/main/resources/db/migration/*.sql text eol=lf
+
+# El manifiesto conserva el SHA256 exacto de las reglas con ajustes locales.
+security/semgrep/rules/secrets.yaml text eol=lf
+security/semgrep/rules-manifest.json text eol=lf

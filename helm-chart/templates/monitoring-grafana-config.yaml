@@ -54,7 +54,9 @@ metadata:
     app.kubernetes.io/component: monitoring
 data:
   {{- range $path, $_ := .Files.Glob "files/grafana/dashboards/*.json" }}
+  {{- if or (ne $.Values.monitoring.mode "namespace") (has (base $path) (list "playhub-http-latency.json" "playhub-counters.json")) }}
   {{ base $path }}: |
     {{- include "playhub.monitoring.adaptQueries" (dict "root" $ "content" ($.Files.Get $path)) | nindent 4 }}
+  {{- end }}
   {{- end }}
 {{- end }}

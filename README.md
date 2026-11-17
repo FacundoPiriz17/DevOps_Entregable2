@@ -146,11 +146,11 @@ La definición actual está en `jenkins/Jenkinsfile`. Realiza checkout, análisi
 
 El tag combina número de build y commit corto. El frontend incorpora la URL pública durante su construcción, y el despliegue utiliza el mismo tag publicado.
 
-El stage de Helm corre solamente con `DEPLOY=true`, cuyo valor predeterminado es `false`. Recibe kubeconfig y secretos desde credenciales Jenkins y utiliza el recorrido remoto de `scripts/deploy-helm.sh`. Ese recorrido omite el monitoreo Prometheus/Grafana del release; no se debe atribuir al clúster público el monitoreo que se demuestra en Minikube.
+El stage de Helm corre en `main` con `DEPLOY=true`, habilitado por defecto. Recibe kubeconfig y secretos desde credenciales Jenkins y utiliza el recorrido remoto de `scripts/deploy-helm.sh`. Por defecto aplica el perfil de recursos `lab` y monitoreo limitado al namespace: Prometheus, Grafana y Blackbox sin permisos de infraestructura ni nuevos PVC. CPU y memoria por pod requieren una fuente de infraestructura adicional; consultar la [guia de monitoreo](monitoring/README.md#monitoreo-limitado-al-namespace-del-laboratorio).
 
 La [guía de la pipeline](jenkins/README.md) detalla herramientas, configuración del job, credenciales, parámetros, etapas y artefactos. Los [comandos de CI](scripts/ci/README.md) explican cómo usar los scripts fuera de Jenkins.
 
-Quedan pendientes la incorporación de Snyk, el bloqueo de Semgrep por hallazgos y las decisiones sobre el agente y el monitoreo remoto. La documentación refleja el código actual; no se adjunta una ejecución nueva de Jenkins como evidencia.
+Semgrep bloquea ante hallazgos de severidad ERROR. Queda pendiente incorporar Snyk a Jenkins y conectar su credencial. Las validaciones locales y consultas de lectura al cluster no sustituyen una corrida nueva de la pipeline ni un despliegue real de estos cambios.
 
 ## 4. Monitoreo y observabilidad
 

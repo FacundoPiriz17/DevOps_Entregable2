@@ -12,7 +12,7 @@ Los comandos de publicación y despliegue utilizados por Jenkins se amplían en 
 | Helm remoto de CI, Bash | `deploy-helm.sh --registry ...` | `cleanup-helm.sh` con kubeconfig y namespace del destino | Imágenes ya publicadas, Ingress y namespace parametrizados. |
 | Manifiestos Blue/Green | `deploy.sh` / `deploy.ps1` | `cleanup.sh` / `cleanup.ps1` | Namespace del contexto activo; Blue y, opcionalmente, Green. |
 
-Los recorridos locales incluyen monitoreo y utilizan el stack de seguridad compartido. El recorrido remoto Bash deshabilita el monitoreo del release; la pipeline usa `SECURITY_MODE=skip` por defecto. No intercambiar los scripts de limpieza de Helm y Blue/Green. Las alternativas de los ejemplos son excluyentes: elegir Bash o PowerShell y la modalidad correspondiente.
+Los recorridos locales incluyen monitoreo y utilizan el stack de seguridad compartido. El recorrido remoto Bash usa monitoreo limitado al namespace; la pipeline usa `SECURITY_MODE=skip` por defecto. No intercambiar los scripts de limpieza de Helm y Blue/Green. Las alternativas de los ejemplos son excluyentes: elegir Bash o PowerShell y la modalidad correspondiente.
 
 ## Preparar herramientas y clúster
 
@@ -165,12 +165,16 @@ instala o adopta Kyverno/Falco y consulta su estado; en instalación prepara
 también el namespace `falco` para el driver eBPF privilegiado. Después prepara
 el namespace de la app y `regcred`, despliega con
 `helm upgrade --install --atomic --wait --timeout 10m` por defecto y ejecuta
-`helm test`. Con `--verify`, comprueba `/login` en la URL pública y esquema
+`helm test`. Con `--verify`, exige `/login` 200 y `/api/games` 401 sin autenticar en la URL pública y esquema
 seleccionados. Los chequeos externos posteriores no forman parte del rollback
 automático de la operación Helm ya finalizada.
 
-El modo remoto omite la construcción y carga de imágenes, el monitoreo
-Prometheus/Grafana del release y los port-forwards. Si Kyverno/Falco ya existen y
+El modo remoto omite la construcción y carga de imágenes y los port-forwards.
+Por defecto aplica `--resource-profile lab` y `--monitoring-mode namespace`: Prometheus,
+Grafana y Blackbox sin RBAC, nodos ni nuevos PVC. Los historicos de monitoreo son
+efimeros; PostgreSQL conserva su PVC. `--no-monitoring` permite deshabilitarlo.
+Para otro dimensionamiento usar `--resource-profile standard`; el monitoreo completo
+requiere `--monitoring-mode cluster` y permisos de infraestructura. Si Kyverno/Falco ya existen y
 no son exactamente las versiones del proyecto, el script se detiene para no
 modificar instalaciones ajenas: en ese caso usar `--skip-security` o coordinar
 con quien administre el cluster. El ejemplo completo del laboratorio mostrado

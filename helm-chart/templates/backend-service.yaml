@@ -14,3 +14,21 @@ spec:
     - name: http
       port: {{ .Values.backend.service.port }}
       targetPort: http
+{{- if and .Values.monitoring.enabled (eq .Values.monitoring.mode "namespace") }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "playhub.fullname" . }}-backend-metrics
+  labels:
+    {{- include "playhub.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector:
+    {{- include "playhub.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+  ports:
+    - name: http
+      port: {{ .Values.backend.containerPort }}
+      targetPort: http
+{{- end }}

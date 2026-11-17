@@ -1,16 +1,22 @@
 {{- if .Values.monitoring.enabled }}
 {{- $root := . }}
 {{- $base := include "playhub.fullname" . }}
+{{- $namespaceOnly := eq .Values.monitoring.mode "namespace" }}
+{{- if not (has .Values.monitoring.mode (list "namespace" "cluster")) }}
+{{- fail "monitoring.mode debe ser namespace o cluster" }}
+{{- end }}
 {{- $prefix := printf "%s-" $base }}
 {{- $clusterRoleName := include "playhub.monitoring.clusterRoleName" . }}
 {{- $checksum := printf "%s\n%s\n%s\n%v\n%v" ((.Files.Glob "files/monitoring/*.yaml").AsConfig) ((.Files.Glob "files/grafana/dashboards/*.json").AsConfig) (include (print $.Template.BasePath "/monitoring-grafana-config.yaml") .) .Values.backend.service.port .Values.frontend.service.port | sha256sum }}
 {{- range $path, $_ := .Files.Glob "files/monitoring/*.yaml" }}
+{{- if or (not $namespaceOnly) (has (base $path) (list "prometheus.yaml" "grafana.yaml" "blackbox-exporter.yaml")) }}
 {{- $originalText := $root.Files.Get $path }}
 {{- $text := replace "playhub-" $prefix $originalText }}
 {{- range $document := regexSplit "(?m)^---[ \\t]*\\r?$" $text -1 }}
 {{- if trim $document }}
 {{- $resource := fromYaml $document }}
 {{- $kind := $resource.kind }}
+{{- if or (ne $kind "PersistentVolumeClaim") $root.Values.monitoring.persistence.enabled }}
 {{- $metadata := $resource.metadata }}
 {{- $labels := merge (dict "app.kubernetes.io/instance" $root.Release.Name "app.kubernetes.io/name" (include "playhub.name" $root) "app.kubernetes.io/component" "monitoring") ($metadata.labels | default dict) }}
 {{- $_ := set $metadata "labels" $labels }}
@@ -33,6 +39,45 @@
 {{- $_ := set $metadata "annotations" (merge (dict "helm.sh/resource-policy" "keep") ($metadata.annotations | default dict)) }}
 {{- end }}
 {{- if or (eq $kind "Deployment") (eq $kind "DaemonSet") }}
+{{- $podSpec := $resource.spec.template.spec }}
+{{- $container := index $podSpec.containers 0 }}
+{{- if eq $metadata.name (printf "%s-prometheus" $base) }}
+{{- $_ := set $container "resources" $root.Values.monitoring.prometheus.resources }}
+{{- if $namespaceOnly }}
+{{- $_ := unset $podSpec "serviceAccountName" }}
+{{- $_ := set $container "args" (list "--config.file=/etc/prometheus/prometheus.yml" "--storage.tsdb.path=/prometheus" "--storage.tsdb.retention.time=24h" "--storage.tsdb.retention.size=400MB") }}
+{{- end }}
+{{- end }}
+{{- if eq $metadata.name (printf "%s-grafana" $base) }}
+{{- $_ := set $container "resources" $root.Values.monitoring.grafana.resources }}
+{{- $_ := set $container "env" (list (dict "name" "GF_SECURITY_ADMIN_USER" "value" "admin") (dict "name" "GF_SECURITY_ADMIN_PASSWORD" "valueFrom" (dict "secretKeyRef" (dict "name" (include "playhub.secretName" $root) "key" "ADMIN_PASSWORD"))) (dict "name" "GF_USERS_ALLOW_SIGN_UP" "value" "false")) }}
+{{- if $namespaceOnly }}
+{{- $mounts := list }}
+{{- range $mount := $container.volumeMounts }}
+{{- if ne $mount.name "alerting" }}{{- $mounts = append $mounts $mount }}{{- end }}
+{{- end }}
+{{- $_ := set $container "volumeMounts" $mounts }}
+{{- end }}
+{{- end }}
+{{- if eq $metadata.name (printf "%s-blackbox-exporter" $base) }}
+{{- $_ := set $container "resources" $root.Values.monitoring.blackboxExporter.resources }}
+{{- end }}
+{{- if $namespaceOnly }}
+{{- $_ := set $podSpec "automountServiceAccountToken" false }}
+{{- $_ := set $resource.spec "strategy" (dict "type" "Recreate") }}
+{{- $_ := set $podSpec.securityContext "seccompProfile" (dict "type" "RuntimeDefault") }}
+{{- $_ := set $container.securityContext "capabilities" (dict "drop" (list "ALL")) }}
+{{- end }}
+{{- $volumes := list }}
+{{- range $volume := $podSpec.volumes }}
+{{- if not (and $namespaceOnly (eq $volume.name "alerting")) }}
+{{- if and (eq $volume.name "data") (not $root.Values.monitoring.persistence.enabled) }}
+{{- $volume = dict "name" "data" "emptyDir" (dict "sizeLimit" "512Mi") }}
+{{- end }}
+{{- $volumes = append $volumes $volume }}
+{{- end }}
+{{- end }}
+{{- $_ := set $podSpec "volumes" $volumes }}
 {{- $podMetadata := $resource.spec.template.metadata }}
 {{- $_ := set $podMetadata "labels" (merge (dict "app.kubernetes.io/component" "monitoring" "app.kubernetes.io/instance" $root.Release.Name) ($podMetadata.labels | default dict)) }}
 {{- $_ := set $podMetadata "annotations" (merge (dict "checksum/monitoring" $checksum) ($podMetadata.annotations | default dict)) }}
@@ -52,6 +97,22 @@
 {{- $config := index $resource.data "prometheus.yml" }}
 {{- $config = replace (printf "%s-backend:8080" $base) (printf "%s-backend:%v" $base $root.Values.backend.service.port) $config }}
 {{- $config = replace (printf "%s-frontend:5745" $base) (printf "%s-frontend:%v" $base $root.Values.frontend.service.port) $config }}
+{{- if $namespaceOnly }}
+{{- $parsed := fromYaml $config }}
+{{- $jobs := list }}
+{{- range $job := $parsed.scrape_configs }}
+{{- if has $job.job_name (list "prometheus" (printf "%s-backend" $base) "blackbox-exporter" (printf "%s-active-http" $base)) }}
+{{- if eq $job.job_name (printf "%s-backend" $base) }}
+{{- $_ := unset $job "kubernetes_sd_configs" }}
+{{- $_ := set $job "dns_sd_configs" (list (dict "names" (list (printf "%s-backend-metrics.%s.svc.%s." $base $root.Release.Namespace $root.Values.monitoring.clusterDomain)) "type" "A" "port" (int $root.Values.backend.containerPort))) }}
+{{- $_ := set $job "relabel_configs" (list (dict "target_label" "slot" "replacement" $root.Values.backend.slot)) }}
+{{- end }}
+{{- $jobs = append $jobs $job }}
+{{- end }}
+{{- end }}
+{{- $_ := set $parsed "scrape_configs" $jobs }}
+{{- $config = toYaml $parsed }}
+{{- end }}
 {{- $_ := set $resource.data "prometheus.yml" $config }}
 {{- end }}
 {{- if and (eq $kind "ConfigMap") (eq $metadata.name (printf "%s-grafana-alerts" $base)) }}
@@ -63,6 +124,8 @@
 {{- end }}
 ---
 {{ toYaml $resource }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end }}

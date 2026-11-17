@@ -156,10 +156,10 @@ except (ValueError, KeyError, TypeError, IndexError) as error:
 ' "$1" | tr -d '\r'
 }
 
-admin_email="facundo@playhub.test"
-admin_password="PlayHub123"
-general_email="agostina@playhub.test"
-general_password="PlayHub123"
+admin_email="${DEMO_ADMIN_EMAIL:-facundo@playhub.test}"
+admin_password="${DEMO_ADMIN_PASSWORD:-PlayHub123}"
+general_email="${DEMO_USER_EMAIL:-agostina@playhub.test}"
+general_password="${DEMO_USER_PASSWORD:-PlayHub123}"
 run_id="$(date +%Y%m%d%H%M%S)-${work_dir##*.}"
 failed_login_attempts=15
 error_request_rounds=3

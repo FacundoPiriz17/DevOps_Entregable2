@@ -7,6 +7,8 @@ metadata:
     app.kubernetes.io/component: frontend
 spec:
   replicas: {{ .Values.frontend.replicaCount }}
+  strategy:
+    {{- toYaml .Values.frontend.strategy | nindent 4 }}
   revisionHistoryLimit: 3
   progressDeadlineSeconds: 360
   selector:

@@ -26,6 +26,9 @@ registry_secret_name=""
 secrets_file_arg=""
 verify_public=false
 monitoring=true
+monitoring_mode=""
+resource_profile=""
+recover_pending_install=false
 wait_timeout=""
 
 usage() {
@@ -47,6 +50,9 @@ usage() {
     "  --skip-image-load           No importa las imagenes a Minikube." \
     "  --no-port-forward           No abre los accesos de aplicacion ni monitoreo." \
     "  --no-monitoring             Deshabilita Prometheus/Grafana del release." \
+    "  --monitoring-mode MODO      namespace (sin RBAC/nodos) o cluster (infraestructura)." \
+    "  --resource-profile PERFIL   lab (cuota compartida) o standard (default: lab remoto)." \
+    "  --recover-pending-install   Recupera solo un primer install pendiente de mas de 1 hora." \
     "  --skip-security             No instala ni registra Kyverno/Falco (cluster compartido)." \
     "  --adopt-security            Registra un Kyverno/Falco existente con las versiones del proyecto." \
     "  --wait-timeout DURACION     Timeout de helm --wait (default: 5m local, 10m remoto)." \
@@ -66,7 +72,7 @@ usage() {
     "  --tls                       Gestiona TLS del Ingress con cert-manager (requiere ClusterIssuer)." \
     "  --tls-issuer NOMBRE         ClusterIssuer de cert-manager (default: letsencrypt-prod)." \
     "  --tls-secret NOMBRE         Secret TLS (default: <release>-tls)." \
-    "  --verify                    Verifica https://HOST/login al final del despliegue." \
+    "  --verify                    Verifica /login y la ruta /api hacia el backend." \
     "" \
     "  -h, --help                  Muestra esta ayuda." \
     "" \
@@ -162,6 +168,20 @@ while (($# > 0)); do
       ;;
     --no-monitoring)
       monitoring=false
+      shift
+      ;;
+    --monitoring-mode)
+      need_value "$@"
+      monitoring_mode="$2"
+      shift 2
+      ;;
+    --resource-profile)
+      need_value "$@"
+      resource_profile="$2"
+      shift 2
+      ;;
+    --recover-pending-install)
+      recover_pending_install=true
       shift
       ;;
     --wait-timeout)
@@ -329,12 +349,42 @@ report_deploy_failure() {
     if kubectl_request get --raw /version >/dev/null; then
       echo 'Estado actual de los recursos y eventos (Helm puede haber revertido los recursos con --atomic):'
       kubectl_request get deployments,replicasets,pods,svc,pvc,ingress -n "$namespace" -o wide || true
+      kubectl_request describe replicasets -n "$namespace" -l "app.kubernetes.io/instance=$release_name" || true
+      kubectl_request get resourcequota,limitrange -n "$namespace" || true
       kubectl_request get events -n "$namespace" --sort-by=.lastTimestamp || true
     else
       echo 'La API Kubernetes sigue inaccesible. Se omiten las demas consultas para no prolongar el fallo.'
       echo 'Revisar la conexion desde el agente Jenkins y el estado del cluster antes de reintentar.'
     fi
   } 2>&1 | tee "$project_root/reports/deploy-diagnostics.txt"
+}
+
+check_helm_release_state() {
+  local history state pvc_policy python
+  if ! history="$(helm history "$release_name" -n "$namespace" -o json 2>&1)"; then
+    if [[ "$history" == *'release: not found'* ]]; then return 0; fi
+    echo "No se pudo consultar el historial de Helm: $history" >&2
+    return 1
+  fi
+  python="$(playhub_security_python)"
+  state="$(printf '%s' "$history" | "$python" "$script_dir/lib/helm-release-state.py")"
+  if [[ "$state" == ready ]]; then return 0; fi
+  if [[ "$state" != stale-install || "$recover_pending_install" != true ]]; then
+    echo 'El release tiene una operacion pendiente. No se modifica una operacion reciente ni un upgrade pendiente.' >&2
+    echo 'Solo un primer install pendiente de mas de una hora se puede recuperar con --recover-pending-install.' >&2
+    return 1
+  fi
+  pvc_policy="$(kubectl_request get pvc "$(resource_base_name)-postgres-data" -n "$namespace" --ignore-not-found=true -o 'jsonpath={.metadata.name}{" "}{.metadata.annotations.helm\.sh/resource-policy}')"
+  if [[ -n "${pvc_policy//[[:space:]]/}" && "$pvc_policy" != *' keep' ]]; then
+    echo 'Se cancela la recuperacion: el PVC de PostgreSQL no tiene helm.sh/resource-policy=keep.' >&2
+    return 1
+  fi
+  if [[ -n "${pvc_policy//[[:space:]]/}" ]]; then
+    helm get manifest "$release_name" -n "$namespace" \
+      | "$python" "$script_dir/lib/helm-release-state.py" --retained-pvc "$(resource_base_name)-postgres-data"
+  fi
+  echo 'Recuperando el primer install abandonado: se retiran los recursos del release y se conserva el PVC de PostgreSQL.'
+  helm uninstall "$release_name" -n "$namespace" --keep-history --no-hooks --wait --timeout "$wait_timeout"
 }
 
 prepare_falco_namespace() {
@@ -602,21 +652,30 @@ if [[ "$remote" == true ]]; then
   skip_build=true
   skip_image_load=true
   no_port_forward=true
-  if [[ "$monitoring" == true ]]; then
-    echo 'Aviso: en modo remoto se omite el monitoreo del release (usar --no-monitoring para silenciar).' >&2
-    monitoring=false
-  fi
+  monitoring_mode="${monitoring_mode:-namespace}"
+  resource_profile="${resource_profile:-lab}"
   ingress_class="${ingress_class:-nginx}"
   tls_secret_name="${tls_secret_name:-$release_name-tls}"
   registry_secret_name="${registry_secret_name:-regcred}"
   wait_timeout="${wait_timeout:-10m}"
 else
+  monitoring_mode="${monitoring_mode:-cluster}"
+  resource_profile="${resource_profile:-standard}"
   wait_timeout="${wait_timeout:-5m}"
   if [[ -n "$public_host" ]]; then
     ingress_class="${ingress_class:-nginx}"
     tls_secret_name="${tls_secret_name:-$release_name-tls}"
   fi
 fi
+
+case "$monitoring_mode" in
+  namespace|cluster) ;;
+  *) echo '--monitoring-mode debe ser namespace o cluster.' >&2; exit 2 ;;
+esac
+case "$resource_profile" in
+  lab|standard) ;;
+  *) echo '--resource-profile debe ser lab o standard.' >&2; exit 2 ;;
+esac
 
 if [[ "$remote" == true || "$environment" == "prod" ]]; then
   if [[ -z "$db_password" || -z "$jwt_secret" || -z "$admin_password" ]]; then
@@ -656,6 +715,7 @@ echo "Namespace del release: $namespace"
 echo "Release: $release_name"
 echo "Entorno: $environment"
 echo "Modo: $([[ "$remote" == true ]] && echo remoto || echo local)"
+echo "Perfil de recursos: $resource_profile; monitoreo: $monitoring (modo $monitoring_mode)"
 
 if [[ "$remote" == true ]]; then
   check_cluster_connection
@@ -685,6 +745,8 @@ cd "$project_root"
 
 chart_path="helm-chart"
 values_file="$chart_path/values-$environment.yaml"
+profile_file=""
+if [[ "$resource_profile" == lab ]]; then profile_file="$chart_path/values-lab.yaml"; fi
 
 if [[ ! -f "$chart_path/Chart.yaml" ]]; then
   echo "No se encontro $project_root/$chart_path/Chart.yaml. La carpeta helm-chart debe estar en la raiz del proyecto." >&2
@@ -835,22 +897,19 @@ write_override_file() {
       echo "  cookieSecure: $(yaml_single_quote "$([[ "$public_scheme" == "https" ]] && echo true || echo false)")"
     fi
 
-    if [[ "$monitoring" == false ]]; then
-      echo "monitoring:"
-      echo "  enabled: false"
-    fi
+    echo "monitoring:"
+    echo "  enabled: $monitoring"
+    echo "  mode: $monitoring_mode"
   } > "$file"
 }
 
-if [[ "$remote" == true || "$environment" == "prod" || -n "$public_host" || "$monitoring" == false ]]; then
-  mkdir -p "$project_root/.tmp"
-  override_file="$project_root/.tmp/helm-overrides.$$.yaml"
-  (umask 077 && : > "$override_file")
-  write_override_file "$override_file"
-fi
+mkdir -p "$project_root/.tmp"
+override_file="$(umask 077 && mktemp "$project_root/.tmp/helm-overrides.XXXXXXXX")"
+write_override_file "$override_file"
 
 echo "Validando el chart (helm lint)..."
 lint_args=(-f "$values_file")
+if [[ -n "$profile_file" ]]; then lint_args+=(-f "$profile_file"); fi
 if [[ -f "$override_file" ]]; then
   lint_args+=(-f "$override_file")
 fi
@@ -859,6 +918,9 @@ helm lint "$chart_path" "${lint_args[@]}"
 if [[ "$remote" == true ]]; then
   echo "Preparando namespace e imagePullSecret..."
   ensure_namespace
+  check_helm_release_state
+  echo 'Cuotas actuales del namespace:'
+  kubectl_request get resourcequota -n "$namespace" || true
   kubectl_request -n "$namespace" create secret docker-registry "$registry_secret_name" \
     --docker-server="$docker_server" \
     --docker-username="$REG_USER" \
@@ -874,6 +936,7 @@ helm_args=(
   -n "$namespace"
   --wait --timeout "$wait_timeout"
 )
+if [[ -n "$profile_file" ]]; then helm_args+=(-f "$profile_file"); fi
 if [[ "$remote" != true || "$namespace_created" == true ]]; then
   helm_args+=(--create-namespace)
 fi
@@ -906,6 +969,14 @@ echo
 if [[ "$remote" == true ]]; then
   echo "URL publica: $public_url"
   kubectl_request -n "$namespace" get ingress || true
+  if [[ "$monitoring" == true ]]; then
+    echo "Grafana: kubectl -n $namespace port-forward svc/$base_name-grafana 3000:3000"
+    echo "Prometheus: kubectl -n $namespace port-forward svc/$base_name-prometheus 9090:9090"
+    echo 'Grafana usa el usuario admin y ADMIN_PASSWORD del archivo de secretos.'
+    if [[ "$monitoring_mode" == namespace ]]; then
+      echo 'Monitoreo HTTP y de negocio habilitado. CPU/memoria de pods requieren metricas de infraestructura de la plataforma.'
+    fi
+  fi
 fi
 
 if [[ "$environment" == "prod" && "$remote" == false ]]; then
@@ -915,23 +986,27 @@ if [[ "$environment" == "prod" && "$remote" == false ]]; then
 fi
 
 if [[ "$verify_public" == true ]]; then
-  echo "Verificando $public_url/login ..."
+  echo "Verificando frontend y backend en $public_url ..."
   verified=false
   for _ in {1..18}; do
-    if curl --fail --silent --show-error --location --max-redirs 3 \
-      --proto-redir '=https' --connect-timeout 10 --max-time 15 \
-      -o /dev/null "$public_url/login"; then
+    frontend_status="$(curl --silent --show-error --connect-timeout 10 --max-time 15 -o /dev/null -w '%{http_code}' "$public_url/login" || true)"
+    # /api/games requiere autenticacion: 401 es la respuesta esperada del backend.
+    # Un frontend saludable por si solo no valida el Ingress ni el Service de la API.
+    backend_status="$(curl --silent --show-error --connect-timeout 10 --max-time 15 -o /dev/null -w '%{http_code}' "$public_url/api/games" || true)"
+    if [[ "$frontend_status" == 200 && "$backend_status" == 401 ]]; then
       verified=true
       break
     fi
+    echo "Estado publico: frontend=$frontend_status (esperado 200), API=$backend_status (esperado 401)." >&2
     sleep 10
   done
   if [[ "$verified" != true ]]; then
-    echo "No se pudo verificar $public_url/login. Revisar DNS, Ingress y certificado TLS." >&2
+    echo "No se pudo verificar frontend/API. Revisar pods, cuotas, Service, Ingress, DNS y TLS." >&2
+    report_deploy_failure
     kubectl_request -n "$namespace" get ingress,certificate >&2 2>/dev/null || true
     exit 1
   fi
-  echo "URL publica verificada: $public_url"
+  echo "Frontend y API publicos verificados: $public_url"
 fi
 
 if [[ "$no_port_forward" == false ]]; then

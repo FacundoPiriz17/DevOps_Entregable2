@@ -14,8 +14,9 @@
   {
     "downloadedUtc": "2026-11-10T13:34:19.7144131Z",
     "registry": "https://semgrep.dev/c/p/secrets",
-    "sha256": "F680EDE6BA7AF3E63A046C2F2C4D117181630B5308BE16B22A48A82636D61B6B",
-    "file": "rules/secrets.yaml"
+    "sha256": "4D054C17F1B69C0C8A084C746D87CD03968B0E07499050DF27D3B60E65F66392",
+    "file": "rules/secrets.yaml",
+    "localAdjustments": "detected-bcrypt-hash: excluir solo los hashes publicos de las migraciones/datos de demostracion; ver README.md."
   },
   {
     "downloadedUtc": "2026-11-10T13:34:19.7466097Z",

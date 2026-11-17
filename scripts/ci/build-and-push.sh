@@ -23,17 +23,16 @@ if [[ "$public_url" == *localhost* || "$public_url" == *127.0.0.1* ]]; then
   echo "Aviso: PUBLIC_URL apunta a localhost; el bundle del frontend no funcionara fuera de esta maquina." >&2
 fi
 
-logged_in=false
+# Cada build usa sus propias credenciales Docker; logout no afecta a otros jobs.
+docker_config="$(mktemp -d)"
+export DOCKER_CONFIG="$docker_config"
 cleanup_login() {
-  if [[ "$logged_in" == true ]]; then
-    docker logout "$registry_host" >/dev/null 2>&1 || true
-  fi
+  rm -f "$docker_config/config.json"
 }
 trap cleanup_login EXIT
 
 echo "Login en $registry_host como $reg_user..."
 printf '%s' "$reg_pass" | docker login "$registry_host" --username "$reg_user" --password-stdin
-logged_in=true
 
 echo "Construyendo $backend_image:$image_tag..."
 docker build \

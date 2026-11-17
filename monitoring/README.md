@@ -1,5 +1,7 @@
 # Monitoreo y visualización con Prometheus y Grafana
 
+Para el cluster compartido consultar [monitoreo limitado al namespace](#monitoreo-limitado-al-namespace-del-laboratorio). Las secciones de infraestructura corresponden al cluster local con permisos ampliados.
+
 ## ¿Qué es Prometheus?
 
 **Prometheus** es un sistema de **monitorización** y **alertas** de código abierto. Su funcionamiento se basa en consultar periódicamente los servicios que exponen métricas a través de HTTP. Este proceso se conoce como _scraping_.

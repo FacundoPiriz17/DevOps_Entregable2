@@ -11,7 +11,7 @@ pipeline {
     }
 
     parameters {
-        booleanParam(name: 'DEPLOY', defaultValue: false, description: 'Desplegar en el cluster al final del pipeline (Build with Parameters).')
+        booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Desplegar al final de builds de main; desactivar para ejecutar solo CI.')
         string(name: 'NAMESPACE', defaultValue: 'alumno-team9', description: 'Namespace del cluster donde se despliega el release.')
         string(name: 'PUBLIC_HOST', defaultValue: 'playhub-team9.reto-ucu.net', description: 'Host publico del Ingress, sin esquema ni ruta.')
         choice(name: 'PUBLIC_SCHEME', choices: ['https', 'http'], description: 'Esquema publico de la URL (el HTTPS puede terminarlo la plataforma).')
@@ -19,7 +19,10 @@ pipeline {
         string(name: 'INGRESS_CLASS', defaultValue: 'apisix', description: 'IngressClass del cluster (apisix, nginx, traefik...).')
         choice(name: 'SECURITY_MODE', choices: ['skip', 'install', 'adopt'], description: 'Kyverno/Falco: skip (cluster del laboratorio), install o adopt.')
         choice(name: 'VALUES_ENV', choices: ['dev', 'prod'], description: 'Values del chart: dev (1 replica, PVC 1Gi) o prod (2 replicas, PVC 5Gi).')
-        booleanParam(name: 'VERIFY_DEPLOY', defaultValue: true, description: 'Verifica la URL publica al final (desactivar si Jenkins no tiene salida a ese host).')
+        choice(name: 'RESOURCE_PROFILE', choices: ['lab', 'standard'], description: 'lab aplica una replica y limites ajustados a la cuota compartida; standard conserva los recursos de dev/prod.')
+        choice(name: 'MONITORING_MODE', choices: ['namespace', 'disabled', 'cluster'], description: 'namespace habilita HTTP/negocio sin RBAC ni nodos; cluster requiere permisos de administrador.')
+        booleanParam(name: 'RECOVER_PENDING_INSTALL', defaultValue: true, description: 'Recupera solo el primer install abandonado por mas de una hora, conservando el PVC de PostgreSQL.')
+        booleanParam(name: 'VERIFY_DEPLOY', defaultValue: true, description: 'Verifica frontend (200) y API sin autenticar (401); detecta el 503 aunque /login cargue.')
         string(name: 'TLS_ISSUER', defaultValue: 'letsencrypt-prod', description: 'ClusterIssuer de cert-manager usado si MANAGE_TLS=true.')
         string(name: 'KUBECONFIG_CREDENTIALS_ID', defaultValue: 'playhub-kubeconfig', description: 'Credencial Secret file con el kubeconfig del cluster.')
         string(name: 'APP_SECRETS_CREDENTIALS_ID', defaultValue: 'playhub-app-secrets', description: 'Credencial Secret file con DB_PASSWORD, JWT_SECRET y ADMIN_PASSWORD.')
@@ -39,15 +42,19 @@ pipeline {
 
         stage("Checkout"){
             steps {
-                checkout scm
                     script {
+                    def checkoutInfo = checkout scm
                     env.GIT_SHORT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.SOURCE_BRANCH = env.BRANCH_NAME ?: checkoutInfo.GIT_BRANCH ?: env.GIT_BRANCH ?: ''
                     env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT}"
                     env.PUBLIC_HOST = (params.PUBLIC_HOST ?: 'playhub-team9.reto-ucu.net').trim()
                     env.PUBLIC_SCHEME = params.PUBLIC_SCHEME ?: 'https'
                     env.PUBLIC_URL = "${env.PUBLIC_SCHEME}://${env.PUBLIC_HOST}"
                     env.NAMESPACE = (params.NAMESPACE ?: 'alumno-team9').trim()
                     env.HELM_ENV = params.VALUES_ENV ?: 'dev'
+                    env.RESOURCE_PROFILE = params.RESOURCE_PROFILE ?: 'lab'
+                    env.MONITORING_MODE = params.MONITORING_MODE ?: 'namespace'
+                    env.RECOVER_PENDING_INSTALL = params.RECOVER_PENDING_INSTALL == false ? 'false' : 'true'
                     env.MANAGE_TLS = params.MANAGE_TLS ? 'true' : 'false'
                     env.VERIFY_DEPLOY = params.VERIFY_DEPLOY ? 'true' : 'false'
                     env.INGRESS_CLASS = params.INGRESS_CLASS ?: 'apisix'
@@ -55,9 +62,18 @@ pipeline {
                     env.TLS_ISSUER = params.TLS_ISSUER ?: 'letsencrypt-prod'
                     env.KUBECONFIG_CREDENTIALS_ID = params.KUBECONFIG_CREDENTIALS_ID ?: 'playhub-kubeconfig'
                     env.APP_SECRETS_CREDENTIALS_ID = params.APP_SECRETS_CREDENTIALS_ID ?: 'playhub-app-secrets'
+                    if (!(env.PUBLIC_HOST ==~ /([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?/)) {
+                        error('PUBLIC_HOST debe ser un nombre DNS, sin esquema ni ruta.')
                     }
-                sh 'mkdir -p reports'
-                echo "Commit ${env.GIT_SHORT} | Tag de imagen ${env.IMAGE_TAG}"
+                    if (!(env.NAMESPACE ==~ /[a-z0-9]([-a-z0-9]*[a-z0-9])?/) || env.NAMESPACE.length() > 63) {
+                        error('NAMESPACE debe ser un nombre Kubernetes valido de hasta 63 caracteres.')
+                    }
+                    if (env.MANAGE_TLS == 'true' && env.PUBLIC_SCHEME != 'https') {
+                        error('MANAGE_TLS=true requiere PUBLIC_SCHEME=https.')
+                    }
+                    }
+                sh 'mkdir -p reports/ci'
+                echo "Rama ${env.SOURCE_BRANCH} | Commit ${env.GIT_SHORT} | Tag de imagen ${env.IMAGE_TAG}"
             }
         }
 
@@ -68,13 +84,25 @@ pipeline {
                     semgrep --version
 
                     semgrep scan \
+                      --oss-only --jobs=2 --timeout=15 \
                       --config security/semgrep/rules \
-                      --config p/security-audit \
-                      --config p/owasp-top-ten \
                       --exclude node_modules --exclude .next --exclude target \
-                      --severity ERROR \
-                      --metrics=off \
-                      --json --output reports/semgrep.json \
+                      --severity ERROR --error \
+                      --exclude .tmp --exclude reports --exclude docs/generated \
+                      --exclude security/semgrep/rules \
+                      --metrics=off --disable-version-check \
+                      --json --output reports/ci/semgrep.json
+                '''
+            }
+        }
+        stage('Validate Helm') {
+            steps {
+                sh '''
+                    set -eu
+                    helm lint helm-chart -f helm-chart/values-dev.yaml
+                    helm lint helm-chart -f helm-chart/values-dev.yaml -f helm-chart/values-lab.yaml
+                    # Solo validacion local: no crea ni consulta este Secret.
+                    helm lint helm-chart -f helm-chart/values-prod.yaml --set-string secrets.existingSecret=ci-validation-only
                 '''
             }
         }
@@ -83,17 +111,7 @@ pipeline {
             parallel {
                 stage('Backend') {
                     steps {
-                        sh '''
-                            docker run --rm \
-                            --volumes-from "$HOSTNAME" \
-                            -v /var/run/docker.sock:/var/run/docker.sock \
-                             --add-host=host.docker.internal:host-gateway \
-                            -e TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal \
-                            -u "$(id -u):$(id -g)" -e HOME=/tmp \
-                            -w "$WORKSPACE/backend" \
-                            maven:3.9-eclipse-temurin-26 \
-                            mvn -B clean verify
-                        '''
+                        sh 'bash ./scripts/ci/run-build.sh backend'
                     }
                     post {
                         always {
@@ -104,14 +122,7 @@ pipeline {
                 }
                 stage('Frontend') {
                     steps {
-                        sh '''
-                            docker run --rm \
-                            --volumes-from "$HOSTNAME" \
-                            -u "$(id -u):$(id -g)" -e HOME=/tmp \
-                            -w "$WORKSPACE/frontend" \
-                            node:22-alpine \
-                            sh -c "npm ci && npm run lint && npm run build"
-                        '''
+                        sh 'bash ./scripts/ci/run-build.sh frontend'
                     }
                 }
             }
@@ -125,7 +136,9 @@ pipeline {
         }
         stage("Deploy Helm"){
             when {
-                expression { params.DEPLOY }
+                expression {
+                    params.DEPLOY && env.SOURCE_BRANCH in ['main', 'origin/main', 'refs/heads/main', 'refs/remotes/origin/main']
+                }
             }
             steps {
                 withCredentials([
@@ -140,6 +153,10 @@ pipeline {
                         VERIFY_FLAG=""
                         if [ "$VERIFY_DEPLOY" = "true" ]; then VERIFY_FLAG="--verify"; fi
                         SECURITY_FLAG=""
+                        MONITORING_FLAG="--monitoring-mode $MONITORING_MODE"
+                        if [ "$MONITORING_MODE" = "disabled" ]; then MONITORING_FLAG="--no-monitoring"; fi
+                        RECOVERY_FLAG=""
+                        if [ "$RECOVER_PENDING_INSTALL" = "true" ]; then RECOVERY_FLAG="--recover-pending-install"; fi
                         case "$SECURITY_MODE" in
                           install) SECURITY_FLAG="" ;;
                           adopt)   SECURITY_FLAG="--adopt-security" ;;
@@ -149,6 +166,7 @@ pipeline {
 
                         bash ./scripts/deploy-helm.sh \
                           --environment "$HELM_ENV" \
+                          --resource-profile "$RESOURCE_PROFILE" \
                           --namespace "$NAMESPACE" \
                           --release-name "$RELEASE" \
                           --kubeconfig "$KUBECONFIG_FILE" \
@@ -161,6 +179,8 @@ pipeline {
                           --tls-issuer "$TLS_ISSUER" \
                           $VERIFY_FLAG \
                           $TLS_FLAG \
+                          $MONITORING_FLAG \
+                          $RECOVERY_FLAG \
                           $SECURITY_FLAG
                     '''
                     script {
@@ -187,12 +207,11 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
-            junit allowEmptyResults: true, testResults: 'backend/target/surefire-reports/*.xml'
+            archiveArtifacts artifacts: 'reports/ci/**,reports/deploy-diagnostics.txt,reports/security-stack.txt', allowEmptyArchive: true
             cleanWs()
         }
         failure {
-            echo "Pipeline detenido con fallo (etapa: ${env.STAGE_NAME ?: 'n/a'}). Revisar logs y reports/."
+            echo 'Pipeline detenido con fallo. Revisar la etapa fallida en consola y los artefactos de esta corrida.'
         }
     }
 
