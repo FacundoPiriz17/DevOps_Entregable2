@@ -37,7 +37,7 @@ Desde la raíz del repositorio, se puede construir la imagen incluida con:
 docker build --file jenkins/Dockerfile.jenkins --tag playhub-jenkins:local jenkins
 ```
 
-El contexto es `jenkins/`, porque el Dockerfile copia `plugins.txt` desde ese contexto. Este comando solo construye la imagen: no inicia un servidor ni configura un job. **TBD:** incorporar una receta de arranque validada para la instalación utilizada por el equipo; no hay un script de arranque de Jenkins versionado en `scripts/`.
+El contexto es `jenkins/`, porque el Dockerfile copia `plugins.txt` desde ese contexto. Este comando solo construye la imagen: no inicia un servidor ni configura un job.
 
 Para ejecutar la pipeline, la instalación de Jenkins debe disponer de:
 
@@ -146,18 +146,6 @@ Si `SECURITY_MODE` es distinto de `skip` y el despliegue alcanza ese punto, Jenk
 El bloque `post` archiva `reports/**`, publica JUnit y limpia el workspace con `cleanWs()`. Como `reports/` también contiene archivos versionados, un artefacto archivado puede ser un reporte histórico que esta corrida no regeneró. El reporte existente de Snyk no prueba que Jenkins haya ejecutado Snyk.
 
 La pipeline impide builds concurrentes de este job, tiene timeout global de 45 minutos y conserva hasta 20 builds y artefactos de hasta 10 builds. La publicación de JUnit en la rama Backend exige resultados; si no se generan XML, ese paso también informa un fallo.
-
-## Límites actuales y pendientes
-
-| Punto | Estado documentado |
-| --- | --- |
-| Snyk | **TBD:** agregar el análisis de dependencias y definir su umbral de bloqueo. Todavía no existe stage ni credencial Snyk requerida por el Jenkinsfile. |
-| Bloqueo de Semgrep | **TBD:** ajustar la política. La invocación actual no falla por la sola presencia de hallazgos. |
-| Selección del agente | Usa `agent any`, aunque necesita el entorno Docker descrito. Las alternativas de agente etiquetado o agentes Docker por etapa aún no están implementadas. |
-| Monitoreo remoto | Se desactiva siempre en la ruta remota. **TBD:** decidir si se integra el monitoreo de la plataforma o se habilita otro esquema autorizado. |
-| Disparo automático | Depende de la configuración del job/SCM; no se encuentra declarado en el Jenkinsfile. |
-
-Estos pendientes no se presentan como comportamientos existentes. La documentación de [monitoreo](../docs/monitoring.md) describe el stack local; su presencia en Minikube no acredita monitoreo del release remoto.
 
 ## Evidencias de ejecución
 
