@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+jenkins/app-secrets.env
 
 # Logs
 *.log
@@ -23,3 +24,7 @@ docs/generated/
 
 # Secrets YAML files
 k8s/secret.yaml
+
+# Kubeconfigs (never commit cluster credentials)
+*.kubeconfig
+kubeconfig
