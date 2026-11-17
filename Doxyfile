@@ -47,6 +47,7 @@ INPUT                  = README.md \
                          backend/src/main/java \
                          frontend/src
 INPUT_ENCODING         = UTF-8
+IMAGE_PATH             = docs
 FILE_PATTERNS          = *.java \
                          *.js \
                          *.md \

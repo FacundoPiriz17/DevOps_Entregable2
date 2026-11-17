@@ -36,7 +36,7 @@ Los documentos de `docs_EntregasAnteriores/` se conservan como antecedentes. Par
 
 ### Diagrama final de componentes
 
-**TBD**
+![Diagrama de componentes DevOps de PlayHub](docs/diagrama_componentes_DevOps.png)
 
 ### Componentes presentes
 
