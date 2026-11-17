@@ -1,0 +1,21 @@
+# Aplicar despues de values-dev.yaml y values-lab.yaml.
+fullnameOverride: playhub-local
+imagePullSecrets: []
+backend:
+  image:
+    repository: playhub-backend
+    pullPolicy: Never
+frontend:
+  image:
+    repository: playhub-frontend
+    pullPolicy: Never
+config:
+  corsAllowedOrigins: http://localhost:5745
+  cookieSecure: "false"
+ingress:
+  enabled: false
+monitoring:
+  enabled: true
+  mode: cluster
+  persistence:
+    enabled: false

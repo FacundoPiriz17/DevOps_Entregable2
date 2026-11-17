@@ -3,7 +3,7 @@ FROM jenkins/jenkins:lts-jdk21
 USER root
 
 
-ARG KUBECTL_VERSION=v1.31.0
+ARG KUBECTL_VERSION=v1.35.1
 ARG HELM_VERSION=v3.16.4
 
 RUN apt-get update \

@@ -1,7 +1,5 @@
 pipeline {
-
     agent any
-
     options {
         skipDefaultCheckout()
         disableConcurrentBuilds()
@@ -9,38 +7,13 @@ pipeline {
         timeout(time: 45, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
     }
-
+    triggers { pollSCM('H/2 * * * *') }
     parameters {
-        booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Desplegar al final de builds de main; desactivar para ejecutar solo CI.')
-        string(name: 'NAMESPACE', defaultValue: 'alumno-team9', description: 'Namespace del cluster donde se despliega el release.')
-        string(name: 'PUBLIC_HOST', defaultValue: 'playhub-team9.reto-ucu.net', description: 'Host publico del Ingress, sin esquema ni ruta.')
-        choice(name: 'PUBLIC_SCHEME', choices: ['https', 'http'], description: 'Esquema publico de la URL (el HTTPS puede terminarlo la plataforma).')
-        booleanParam(name: 'MANAGE_TLS', defaultValue: false, description: 'Gestiona TLS del Ingress con cert-manager (requiere ClusterIssuer).')
-        string(name: 'INGRESS_CLASS', defaultValue: 'apisix', description: 'IngressClass del cluster (apisix, nginx, traefik...).')
-        choice(name: 'SECURITY_MODE', choices: ['skip', 'install', 'adopt'], description: 'Kyverno/Falco: skip (cluster del laboratorio), install o adopt.')
-        choice(name: 'VALUES_ENV', choices: ['dev', 'prod'], description: 'Values del chart: dev (1 replica, PVC 1Gi) o prod (2 replicas, PVC 5Gi).')
-        choice(name: 'RESOURCE_PROFILE', choices: ['lab', 'standard'], description: 'lab aplica una replica y limites ajustados a la cuota compartida; standard conserva los recursos de dev/prod.')
-        choice(name: 'MONITORING_MODE', choices: ['disabled', 'namespace', 'cluster'], description: 'disabled omite Prometheus, Grafana y Blackbox para reducir recursos; namespace habilita HTTP/negocio; cluster requiere permisos de administrador.')
-        booleanParam(name: 'RECOVER_PENDING_INSTALL', defaultValue: true, description: 'Recupera solo el primer install abandonado por mas de una hora, conservando el PVC de PostgreSQL.')
-        booleanParam(name: 'VERIFY_DEPLOY', defaultValue: true, description: 'Verifica frontend (200) y API sin autenticar (401); detecta el 503 aunque /login cargue.')
-        string(name: 'TLS_ISSUER', defaultValue: 'letsencrypt-prod', description: 'ClusterIssuer de cert-manager usado si MANAGE_TLS=true.')
-        string(name: 'KUBECONFIG_CREDENTIALS_ID', defaultValue: 'playhub-kubeconfig', description: 'Credencial Secret file con el kubeconfig del cluster.')
-        string(name: 'APP_SECRETS_CREDENTIALS_ID', defaultValue: 'playhub-app-secrets', description: 'Credencial Secret file con DB_PASSWORD, JWT_SECRET y ADMIN_PASSWORD.')
+        booleanParam(name: 'DEPLOY', defaultValue: true, description: 'Desplegar main en Minikube local con monitoreo.')
     }
-
-    environment {
-        REGISTRY   = 'docker.io/agustingarciaa'            // CAMBIAR
-        IMAGE_BE   = "${REGISTRY}/playhub-backend"
-        IMAGE_FE   = "${REGISTRY}/playhub-frontend"
-        RELEASE    = 'playhub'
-        CHART_PATH = 'helm-chart'                      // AJUSTAR si la ruta real difiere
-    }
-
-
-
+    environment { PUBLIC_URL = 'http://localhost:8080' }
     stages {
-
-        stage("Checkout"){
+        stage('1. Clonacion del repositorio') {
             steps {
                 script {
                     def checkoutInfo = checkout scm
@@ -60,192 +33,61 @@ pipeline {
                             fi
                         ''', returnStdout: true).trim()
                     }
-                    // Un parametro ausente usa el default; un false explicito se respeta.
-                    def deployRequested = params.DEPLOY == null || params.DEPLOY == true
+                    if (!env.SOURCE_BRANCH && params.DEPLOY != false) {
+                        error('No se pudo identificar la rama; no se asume main.')
+                    }
                     def mainBranch = env.SOURCE_BRANCH in ['main', 'origin/main', 'refs/heads/main', 'refs/remotes/origin/main']
-                    env.SHOULD_DEPLOY = 'false'
-                    if (!deployRequested) {
-                        env.DEPLOY_REASON = 'DEPLOY=false: esta corrida ejecuta CI y publica imagenes, sin actualizar Kubernetes.'
-                    } else if (env.CHANGE_ID || env.TAG_NAME) {
-                        env.DEPLOY_REASON = 'Build de pull request o tag: no se despliega.'
-                    } else if (!env.SOURCE_BRANCH) {
-                        error('DEPLOY esta habilitado, pero no se pudo identificar la rama. Revisar el checkout SCM; no se asume main.')
-                    } else if (!mainBranch) {
-                        env.DEPLOY_REASON = "Rama ${env.SOURCE_BRANCH}: solo main se despliega."
-                    } else {
-                        env.SHOULD_DEPLOY = 'true'
-                        env.DEPLOY_REASON = 'Habilitado: DEPLOY=true y checkout de main.'
-                    }
-                    env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT}"
-                    env.PUBLIC_HOST = (params.PUBLIC_HOST ?: 'playhub-team9.reto-ucu.net').trim()
-                    env.PUBLIC_SCHEME = params.PUBLIC_SCHEME ?: 'https'
-                    env.PUBLIC_URL = "${env.PUBLIC_SCHEME}://${env.PUBLIC_HOST}"
-                    env.NAMESPACE = (params.NAMESPACE ?: 'alumno-team9').trim()
-                    env.HELM_ENV = params.VALUES_ENV ?: 'dev'
-                    env.RESOURCE_PROFILE = params.RESOURCE_PROFILE ?: 'lab'
-                    env.MONITORING_MODE = params.MONITORING_MODE ?: 'disabled'
-                    env.RECOVER_PENDING_INSTALL = params.RECOVER_PENDING_INSTALL == false ? 'false' : 'true'
-                    env.MANAGE_TLS = params.MANAGE_TLS ? 'true' : 'false'
-                    env.VERIFY_DEPLOY = params.VERIFY_DEPLOY ? 'true' : 'false'
-                    env.INGRESS_CLASS = params.INGRESS_CLASS ?: 'apisix'
-                    env.SECURITY_MODE = params.SECURITY_MODE ?: 'skip'
-                    env.TLS_ISSUER = params.TLS_ISSUER ?: 'letsencrypt-prod'
-                    env.KUBECONFIG_CREDENTIALS_ID = params.KUBECONFIG_CREDENTIALS_ID ?: 'playhub-kubeconfig'
-                    env.APP_SECRETS_CREDENTIALS_ID = params.APP_SECRETS_CREDENTIALS_ID ?: 'playhub-app-secrets'
-                    if (!(env.PUBLIC_HOST ==~ /([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?/)) {
-                        error('PUBLIC_HOST debe ser un nombre DNS, sin esquema ni ruta.')
-                    }
-                    if (!(env.NAMESPACE ==~ /[a-z0-9]([-a-z0-9]*[a-z0-9])?/) || env.NAMESPACE.length() > 63) {
-                        error('NAMESPACE debe ser un nombre Kubernetes valido de hasta 63 caracteres.')
-                    }
-                    if (env.MANAGE_TLS == 'true' && env.PUBLIC_SCHEME != 'https') {
-                        error('MANAGE_TLS=true requiere PUBLIC_SCHEME=https.')
-                    }
+                    env.SHOULD_DEPLOY = (params.DEPLOY != false && mainBranch && !env.CHANGE_ID && !env.TAG_NAME) ? 'true' : 'false'
+                    env.IMAGE_TAG = "local-${env.BUILD_NUMBER}-${env.GIT_SHORT}"
                 }
-                sh 'mkdir -p reports/ci'
-                echo "Rama ${env.SOURCE_BRANCH} | Commit ${env.GIT_SHORT} | Tag de imagen ${env.IMAGE_TAG}"
-                echo "Deploy Helm: ${env.DEPLOY_REASON}"
-                echo "Perfil de recursos: ${env.RESOURCE_PROFILE} | Monitoreo: ${env.MONITORING_MODE}"
-            }
-        }
-
-        stage("SAST - Semgrep"){
-            steps {
-                 sh '''
-                    set -e
-                    semgrep --version
-
-                    semgrep scan \
-                      --oss-only --jobs=2 --timeout=15 \
-                      --config security/semgrep/rules \
-                      --exclude node_modules --exclude .next --exclude target \
-                      --severity ERROR --error \
-                      --exclude .tmp --exclude reports --exclude docs/generated \
-                      --exclude security/semgrep/rules \
-                      --metrics=off --disable-version-check \
-                      --json --output reports/ci/semgrep.json
-                '''
-            }
-        }
-        stage('Validate Helm') {
-            steps {
                 sh '''
                     set -eu
-                    helm lint helm-chart -f helm-chart/values-dev.yaml
-                    helm lint helm-chart -f helm-chart/values-dev.yaml -f helm-chart/values-lab.yaml
-                    helm lint helm-chart -f helm-chart/values-dev.yaml -f helm-chart/values-lab.yaml --set monitoring.enabled=false
-                    # Solo validacion local: no crea ni consulta este Secret.
-                    helm lint helm-chart -f helm-chart/values-prod.yaml --set-string secrets.existingSecret=ci-validation-only
+                    mkdir -p reports/ci
+                    rm -f reports/semgrep-report.txt
+                    docker info >/dev/null
+                    docker build -f jenkins/Dockerfile.jenkins -t playhub-jenkins:local jenkins
                 '''
+                echo "Rama: ${env.SOURCE_BRANCH} | Imagenes: ${env.IMAGE_TAG} | Deploy local: ${env.SHOULD_DEPLOY}"
             }
         }
-        stage("Build and Test"){
-            failFast true          // si falla una rama, cancela la otra
+        stage('2. Analisis estatico - Semgrep') {
+            steps { sh 'bash scripts/ci/with-tools.sh bash scripts/ci/scan-semgrep.sh' }
+        }
+        stage('3. Construccion y tests') {
+            failFast true
             parallel {
                 stage('Backend') {
-                    steps {
-                        sh 'bash ./scripts/ci/run-build.sh backend'
-                    }
+                    steps { sh 'bash scripts/ci/with-tools.sh bash scripts/ci/run-build.sh backend' }
                     post {
                         always {
-                            junit testResults: 'backend/target/surefire-reports/*.xml',
-                                allowEmptyResults: false
+                            junit testResults: 'backend/target/surefire-reports/*.xml', allowEmptyResults: false
                         }
                     }
                 }
                 stage('Frontend') {
-                    steps {
-                        sh 'bash ./scripts/ci/run-build.sh frontend'
-                    }
+                    steps { sh 'bash scripts/ci/with-tools.sh bash scripts/ci/run-build.sh frontend' }
                 }
             }
         }
-        stage("Docker Build and Push"){
+        stage('4. Construccion y publicacion Docker') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-registry', usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
-                    sh 'bash ./scripts/ci/build-and-push.sh'
-                }
+                sh 'bash scripts/ci/with-tools.sh bash scripts/ci/build-images.sh'
+                sh 'bash scripts/ci/with-tools.sh bash scripts/ci/publish-local.sh'
             }
         }
-        stage("Deploy Helm"){
-            when {
-                expression {
-                    env.SHOULD_DEPLOY == 'true'
-                }
-            }
+        stage('5. Despliegue automatico con Helm') {
+            when { expression { env.SHOULD_DEPLOY == 'true' } }
             steps {
-                withCredentials([
-                    file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG_FILE'),
-                    file(credentialsId: env.APP_SECRETS_CREDENTIALS_ID, variable: 'APP_SECRETS_FILE'),
-                    usernamePassword(credentialsId: 'docker-registry', usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')
-                ]) {
-                    sh '''
-                        set -eu
-                        TLS_FLAG=""
-                        if [ "$MANAGE_TLS" = "true" ]; then TLS_FLAG="--tls"; fi
-                        VERIFY_FLAG=""
-                        if [ "$VERIFY_DEPLOY" = "true" ]; then VERIFY_FLAG="--verify"; fi
-                        SECURITY_FLAG=""
-                        MONITORING_FLAG="--monitoring-mode $MONITORING_MODE"
-                        if [ "$MONITORING_MODE" = "disabled" ]; then MONITORING_FLAG="--no-monitoring"; fi
-                        RECOVERY_FLAG=""
-                        if [ "$RECOVER_PENDING_INSTALL" = "true" ]; then RECOVERY_FLAG="--recover-pending-install"; fi
-                        case "$SECURITY_MODE" in
-                          install) SECURITY_FLAG="" ;;
-                          adopt)   SECURITY_FLAG="--adopt-security" ;;
-                          skip)    SECURITY_FLAG="--skip-security" ;;
-                          *) echo "SECURITY_MODE invalido: $SECURITY_MODE" >&2; exit 2 ;;
-                        esac
-
-                        bash ./scripts/deploy-helm.sh \
-                          --environment "$HELM_ENV" \
-                          --resource-profile "$RESOURCE_PROFILE" \
-                          --namespace "$NAMESPACE" \
-                          --release-name "$RELEASE" \
-                          --kubeconfig "$KUBECONFIG_FILE" \
-                          --registry "$REGISTRY" \
-                          --image-tag "$IMAGE_TAG" \
-                          --public-host "$PUBLIC_HOST" \
-                          --public-scheme "$PUBLIC_SCHEME" \
-                          --ingress-class "$INGRESS_CLASS" \
-                          --secrets-file "$APP_SECRETS_FILE" \
-                          --tls-issuer "$TLS_ISSUER" \
-                          $VERIFY_FLAG \
-                          $TLS_FLAG \
-                          $MONITORING_FLAG \
-                          $RECOVERY_FLAG \
-                          $SECURITY_FLAG
-                    '''
-                    script {
-                        if (env.SECURITY_MODE != 'skip') {
-                            sh '''
-                                export KUBECONFIG="$KUBECONFIG_FILE"
-                                mkdir -p reports
-                                {
-                                echo "# Kyverno"
-                                kubectl get clusterpolicy 2>/dev/null || true
-                                kubectl get validatingpolicy 2>/dev/null || true
-                                echo
-                                echo "# Falco"
-                                kubectl -n falco get daemonset,pods 2>/dev/null || true
-                                helm list -n falco 2>/dev/null || true
-                                } | tee reports/security-stack.txt
-                            '''
-                        }
-                    }
-                }
+                sh 'bash scripts/ci/with-tools.sh helm lint helm-chart -f helm-chart/values-dev.yaml -f helm-chart/values-lab.yaml -f helm-chart/values-local.yaml'
+                sh 'bash scripts/ci/with-tools.sh bash scripts/ci/deploy-local.sh'
             }
         }
     }
-
     post {
         always {
-            archiveArtifacts artifacts: 'reports/ci/**,reports/deploy-diagnostics.txt,reports/security-stack.txt', allowEmptyArchive: true
-            cleanWs()
+            archiveArtifacts artifacts: 'reports/ci/**,reports/semgrep-report.txt', allowEmptyArchive: true
+            deleteDir()
         }
-        failure {
-            echo 'Pipeline detenido con fallo. Revisar la etapa fallida en consola y los artefactos de esta corrida.'
-        }
+        failure { echo 'Pipeline detenida: revisar la etapa fallida y sus reportes.' }
     }
-
 }
