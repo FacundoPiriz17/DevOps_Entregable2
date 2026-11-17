@@ -84,6 +84,113 @@ bash scripts/deploy-helm.sh --skip-build --skip-image-load --no-port-forward
 .\scripts\deploy-helm.ps1 -SkipBuild -SkipImageLoad -NoPortForward
 ```
 
+## `deploy-helm.sh` (Helm: cluster local y cluster público)
+
+Instala o actualiza el release de Helm `playhub` y verifica el despliegue. Sin
+`--registry` conserva el flujo local sobre Minikube (construye las imágenes, las
+carga con `minikube image load` y abre port-forwards). Con `--registry` usa las
+imágenes ya publicadas por la pipeline y despliega en un cluster remoto.
+
+### Cluster local (Minikube)
+
+```bash
+./scripts/deploy-helm.sh
+./scripts/deploy-helm.sh --environment prod --db-password X --jwt-secret Y --admin-password Z
+```
+
+### Cluster público con kubeconfig, DNS y TLS
+
+Requisitos previos en el cluster:
+
+- Ingress controller instalado (la `IngressClass` se pasa con `--ingress-class`: `nginx`, `traefik`, `apisix`, etc.).
+- Registro DNS del host apuntando a la IP pública del Ingress.
+- Para TLS gestionado por el chart: `cert-manager` instalado y un `ClusterIssuer` de Let's Encrypt (por defecto `letsencrypt-prod`). Si el HTTPS lo termina la plataforma (por ejemplo APISIX con certificado wildcard), no uses `--tls`: alcanza con `--public-scheme https` para que la app genere URLs/cookies seguras.
+- Imágenes públicas en el registry, o credenciales para crear el `imagePullSecret` (modo remoto usa `REG_USER` y `REG_PASS`).
+- Para Kyverno/Falco: kubeconfig con permisos de administrador (CRDs, ClusterRoles, webhooks y namespaces), egress desde Jenkins hacia GitHub y el repo de charts de Falco, y desde los nodos hacia `reg.kyverno.io`, `ghcr.io` y Docker Hub.
+- Cluster dedicado al equipo: las políticas de Kyverno se aplican en modo `Enforce` a todo el cluster salvo los namespaces de sistema. En un cluster compartido usar `--skip-security`.
+
+```bash
+REG_USER=usuario REG_PASS=token \
+  ./scripts/deploy-helm.sh \
+    --environment prod \
+    --namespace playhub \
+    --kubeconfig ~/.kube/playhub.yaml \
+    --registry docker.io/agustingarciaa \
+    --image-tag 42-a1b2c3d \
+    --public-host playhub.example.com \
+    --public-scheme https \
+    --ingress-class nginx \
+    --secrets-file .secrets/playhub.env \
+    --tls --tls-issuer letsencrypt-prod \
+    --verify
+```
+
+En el cluster del laboratorio (namespace y TLS provistos por la plataforma):
+
+```bash
+REG_USER=usuario REG_PASS=token \
+  ./scripts/deploy-helm.sh \
+    --environment dev \
+    --namespace alumno-team9 \
+    --kubeconfig ./team9.kubeconfig \
+    --registry docker.io/agustingarciaa \
+    --image-tag 42-a1b2c3d \
+    --public-host playhub-team9.reto-ucu.net \
+    --public-scheme https \
+    --ingress-class apisix \
+    --secrets-file ./app-secrets.env \
+    --skip-security \
+    --verify
+```
+
+`--public-scheme` define la URL pública, las cookies seguras y CORS con
+independencia de `--tls`. `--tls` solo agrega el bloque TLS y la anotación de
+cert-manager al Ingress. Si el namespace ya existe, el script no intenta
+crearlo; si no puede consultarlo por RBAC, asume que existe y continúa.
+
+El archivo de `--secrets-file` usa el formato de
+[`jenkins/app-secrets.env.example`](../jenkins/app-secrets.env.example) y define
+`DB_PASSWORD`, `JWT_SECRET` (48+ bytes) y `ADMIN_PASSWORD`; nunca se pasa por
+argumentos para no exponerlo en el historial.
+
+En modo remoto el script valida el `kubeconfig`, la versión de Kubernetes y la
+`IngressClass`; si se usa `--tls`, también valida el `ClusterIssuer` y los
+permisos para instalar el stack de seguridad. Luego instala Kyverno y Falco (o los
+registra con `--adopt-security`), prepara el namespace `falco` para el driver eBPF
+privilegiado, crea el namespace de la app si no existe y el `imagePullSecret`
+(`regcred`), despliega con `helm upgrade --install --atomic --wait --timeout 10m`,
+muestra el estado de las políticas y del DaemonSet de Falco, y con `--verify`
+comprueba `https://HOST/login` con reintentos.
+
+El modo remoto omite la construcción y carga de imágenes, el monitoreo
+Prometheus/Grafana del release y los port-forwards. Si Kyverno/Falco ya existen y
+no son exactamente las versiones del proyecto, el script se detiene para no
+modificar instalaciones ajenas: en ese caso usar `--skip-security` o coordinar
+con quien administre el cluster. Para omitir el stack en un cluster compartido:
+
+```bash
+./scripts/deploy-helm.sh ... --skip-security
+```
+
+### Desde Jenkins
+
+El stage `Deploy Helm` usa las credenciales:
+
+| Credencial | Tipo | Contenido |
+| --- | --- | --- |
+| `playhub-kubeconfig` | Secret file | kubeconfig del cluster público |
+| `playhub-app-secrets` | Secret file | `DB_PASSWORD`, `JWT_SECRET`, `ADMIN_PASSWORD` |
+| `docker-registry` | Username with password | usuario y token del registry |
+
+El deploy solo corre con el parámetro `DEPLOY` habilitado. Los parámetros del job
+son `NAMESPACE` (default `alumno-team9`), `PUBLIC_HOST`, `PUBLIC_SCHEME`,
+`MANAGE_TLS` (default `false`), `VERIFY_DEPLOY` (verificación HTTP final),
+`INGRESS_CLASS` (default `apisix`), `VALUES_ENV` (`dev`/`prod`, default `dev`),
+`TLS_ISSUER` y `SECURITY_MODE` (default `skip`; también `install` o `adopt`).
+Después del deploy, si la seguridad no está en `skip`, el pipeline guarda el
+estado de las políticas y de Falco en `reports/security-stack.txt`.
+
+## `switch-slot.sh` / `switch-slot.ps1`
 Las etiquetas reutilizadas no garantizan que el código de una imagen coincida con el checkout actual. Si cambia Java, Next.js o `NEXT_PUBLIC_API_URL`, reconstruir la imagen correspondiente.
 
 El detalle de `prod`, Ingress y la instalación manual con `helm install` se mantiene en [helm-chart/README.md](../helm-chart/README.md). Los scripts Helm no leen `.env`.

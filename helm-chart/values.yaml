@@ -1,5 +1,6 @@
 nameOverride: ""
 fullnameOverride: ""
+imagePullSecrets: []
 backend:
   replicaCount: 1
   slot: helm

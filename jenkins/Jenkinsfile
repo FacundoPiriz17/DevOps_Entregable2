@@ -1,0 +1,198 @@
+pipeline {
+
+    agent any
+
+    options {
+        skipDefaultCheckout()
+        disableConcurrentBuilds()
+        timestamps()
+        timeout(time: 45, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
+    }
+
+    parameters {
+        booleanParam(name: 'DEPLOY', defaultValue: false, description: 'Desplegar en el cluster al final del pipeline (Build with Parameters).')
+        string(name: 'NAMESPACE', defaultValue: 'alumno-team9', description: 'Namespace del cluster donde se despliega el release.')
+        string(name: 'PUBLIC_HOST', defaultValue: 'playhub-team9.reto-ucu.net', description: 'Host publico del Ingress, sin esquema ni ruta.')
+        choice(name: 'PUBLIC_SCHEME', choices: ['https', 'http'], description: 'Esquema publico de la URL (el HTTPS puede terminarlo la plataforma).')
+        booleanParam(name: 'MANAGE_TLS', defaultValue: false, description: 'Gestiona TLS del Ingress con cert-manager (requiere ClusterIssuer).')
+        string(name: 'INGRESS_CLASS', defaultValue: 'apisix', description: 'IngressClass del cluster (apisix, nginx, traefik...).')
+        choice(name: 'SECURITY_MODE', choices: ['skip', 'install', 'adopt'], description: 'Kyverno/Falco: skip (cluster del laboratorio), install o adopt.')
+        choice(name: 'VALUES_ENV', choices: ['dev', 'prod'], description: 'Values del chart: dev (1 replica, PVC 1Gi) o prod (2 replicas, PVC 5Gi).')
+        booleanParam(name: 'VERIFY_DEPLOY', defaultValue: true, description: 'Verifica la URL publica al final (desactivar si Jenkins no tiene salida a ese host).')
+        string(name: 'TLS_ISSUER', defaultValue: 'letsencrypt-prod', description: 'ClusterIssuer de cert-manager usado si MANAGE_TLS=true.')
+        string(name: 'KUBECONFIG_CREDENTIALS_ID', defaultValue: 'playhub-kubeconfig', description: 'Credencial Secret file con el kubeconfig del cluster.')
+        string(name: 'APP_SECRETS_CREDENTIALS_ID', defaultValue: 'playhub-app-secrets', description: 'Credencial Secret file con DB_PASSWORD, JWT_SECRET y ADMIN_PASSWORD.')
+    }
+
+    environment {
+        REGISTRY   = 'docker.io/agustingarciaa'            // CAMBIAR
+        IMAGE_BE   = "${REGISTRY}/playhub-backend"
+        IMAGE_FE   = "${REGISTRY}/playhub-frontend"
+        RELEASE    = 'playhub'
+        CHART_PATH = 'helm-chart'                      // AJUSTAR si la ruta real difiere
+    }
+
+
+
+    stages {
+
+        stage("Checkout"){
+            steps {
+                checkout scm
+                    script {
+                    env.GIT_SHORT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT}"
+                    env.PUBLIC_HOST = (params.PUBLIC_HOST ?: 'playhub-team9.reto-ucu.net').trim()
+                    env.PUBLIC_SCHEME = params.PUBLIC_SCHEME ?: 'https'
+                    env.PUBLIC_URL = "${env.PUBLIC_SCHEME}://${env.PUBLIC_HOST}"
+                    env.NAMESPACE = (params.NAMESPACE ?: 'alumno-team9').trim()
+                    env.HELM_ENV = params.VALUES_ENV ?: 'dev'
+                    env.MANAGE_TLS = params.MANAGE_TLS ? 'true' : 'false'
+                    env.VERIFY_DEPLOY = params.VERIFY_DEPLOY ? 'true' : 'false'
+                    env.INGRESS_CLASS = params.INGRESS_CLASS ?: 'apisix'
+                    env.SECURITY_MODE = params.SECURITY_MODE ?: 'skip'
+                    env.TLS_ISSUER = params.TLS_ISSUER ?: 'letsencrypt-prod'
+                    env.KUBECONFIG_CREDENTIALS_ID = params.KUBECONFIG_CREDENTIALS_ID ?: 'playhub-kubeconfig'
+                    env.APP_SECRETS_CREDENTIALS_ID = params.APP_SECRETS_CREDENTIALS_ID ?: 'playhub-app-secrets'
+                    }
+                sh 'mkdir -p reports'
+                echo "Commit ${env.GIT_SHORT} | Tag de imagen ${env.IMAGE_TAG}"
+            }
+        }
+
+        stage("SAST - Semgrep"){
+            steps {
+                 sh '''
+                    set -e
+                    semgrep --version
+
+                    semgrep scan \
+                      --config security/semgrep/rules \
+                      --config p/security-audit \
+                      --config p/owasp-top-ten \
+                      --exclude node_modules --exclude .next --exclude target \
+                      --severity ERROR \
+                      --metrics=off \
+                      --json --output reports/semgrep.json \
+                      --error
+                '''
+            }
+        }
+        stage("Build and Test"){
+            failFast true          // si falla una rama, cancela la otra
+            parallel {
+                stage('Backend') {
+                    steps {
+                        sh '''
+                            docker run --rm \
+                            --volumes-from "$HOSTNAME" \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -u "$(id -u):$(id -g)" -e HOME=/tmp \
+                            -w "$WORKSPACE/backend" \
+                            maven:3.9-eclipse-temurin-26 \
+                            mvn -B clean verify
+                        '''
+                    }
+                    post {
+                        always {
+                            junit testResults: 'backend/target/surefire-reports/*.xml',
+                                allowEmptyResults: false
+                        }
+                    }
+                }
+                stage('Frontend') {
+                    steps {
+                        sh '''
+                            docker run --rm \
+                            --volumes-from "$HOSTNAME" \
+                            -u "$(id -u):$(id -g)" -e HOME=/tmp \
+                            -w "$WORKSPACE/frontend" \
+                            node:22-alpine \
+                            sh -c "npm ci && npm run lint && npm run build"
+                        '''
+                    }
+                }
+            }
+        }
+        stage("Docker Build and Push"){
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-registry', usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
+                    sh 'bash ./scripts/ci/build-and-push.sh'
+                }
+            }
+        }
+        stage("Deploy Helm"){
+            when {
+                expression { params.DEPLOY }
+            }
+            steps {
+                withCredentials([
+                    file(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG_FILE'),
+                    file(credentialsId: env.APP_SECRETS_CREDENTIALS_ID, variable: 'APP_SECRETS_FILE'),
+                    usernamePassword(credentialsId: 'docker-registry', usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')
+                ]) {
+                    sh '''
+                        set -eu
+                        TLS_FLAG=""
+                        if [ "$MANAGE_TLS" = "true" ]; then TLS_FLAG="--tls"; fi
+                        VERIFY_FLAG=""
+                        if [ "$VERIFY_DEPLOY" = "true" ]; then VERIFY_FLAG="--verify"; fi
+                        SECURITY_FLAG=""
+                        case "$SECURITY_MODE" in
+                          install) SECURITY_FLAG="" ;;
+                          adopt)   SECURITY_FLAG="--adopt-security" ;;
+                          skip)    SECURITY_FLAG="--skip-security" ;;
+                          *) echo "SECURITY_MODE invalido: $SECURITY_MODE" >&2; exit 2 ;;
+                        esac
+
+                        bash ./scripts/deploy-helm.sh \
+                          --environment "$HELM_ENV" \
+                          --namespace "$NAMESPACE" \
+                          --release-name "$RELEASE" \
+                          --kubeconfig "$KUBECONFIG_FILE" \
+                          --registry "$REGISTRY" \
+                          --image-tag "$IMAGE_TAG" \
+                          --public-host "$PUBLIC_HOST" \
+                          --public-scheme "$PUBLIC_SCHEME" \
+                          --ingress-class "$INGRESS_CLASS" \
+                          --secrets-file "$APP_SECRETS_FILE" \
+                          --tls-issuer "$TLS_ISSUER" \
+                          $VERIFY_FLAG \
+                          $TLS_FLAG \
+                          $SECURITY_FLAG
+                    '''
+                    script {
+                        if (env.SECURITY_MODE != 'skip') {
+                            sh '''
+                                export KUBECONFIG="$KUBECONFIG_FILE"
+                                mkdir -p reports
+                                {
+                                echo "# Kyverno"
+                                kubectl get clusterpolicy 2>/dev/null || true
+                                kubectl get validatingpolicy 2>/dev/null || true
+                                echo
+                                echo "# Falco"
+                                kubectl -n falco get daemonset,pods 2>/dev/null || true
+                                helm list -n falco 2>/dev/null || true
+                                } | tee reports/security-stack.txt
+                            '''
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+            junit allowEmptyResults: true, testResults: 'backend/target/surefire-reports/*.xml'
+            cleanWs()
+        }
+        failure {
+            echo "Pipeline detenido con fallo (etapa: ${env.STAGE_NAME ?: 'n/a'}). Revisar logs y reports/."
+        }
+    }
+
+}
