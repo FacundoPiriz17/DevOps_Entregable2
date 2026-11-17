@@ -162,20 +162,22 @@ pipeline {
                           $TLS_FLAG \
                           $SECURITY_FLAG
                     '''
-                    if (env.SECURITY_MODE != 'skip') {
-                        sh '''
-                            export KUBECONFIG="$KUBECONFIG_FILE"
-                            mkdir -p reports
-                            {
-                              echo "# Kyverno"
-                              kubectl get clusterpolicy 2>/dev/null || true
-                              kubectl get validatingpolicy 2>/dev/null || true
-                              echo
-                              echo "# Falco"
-                              kubectl -n falco get daemonset,pods 2>/dev/null || true
-                              helm list -n falco 2>/dev/null || true
-                            } | tee reports/security-stack.txt
-                        '''
+                    script {
+                        if (env.SECURITY_MODE != 'skip') {
+                            sh '''
+                                export KUBECONFIG="$KUBECONFIG_FILE"
+                                mkdir -p reports
+                                {
+                                echo "# Kyverno"
+                                kubectl get clusterpolicy 2>/dev/null || true
+                                kubectl get validatingpolicy 2>/dev/null || true
+                                echo
+                                echo "# Falco"
+                                kubectl -n falco get daemonset,pods 2>/dev/null || true
+                                helm list -n falco 2>/dev/null || true
+                                } | tee reports/security-stack.txt
+                            '''
+                        }
                     }
                 }
             }
