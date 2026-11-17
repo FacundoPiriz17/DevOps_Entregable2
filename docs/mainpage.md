@@ -1,6 +1,6 @@
 # Visión técnica de PlayHub {#technical_overview}
 
-El [README principal](../README.md) es la portada de la documentación generada. Incluye el índice de la entrega, los comandos de inicio y los enlaces a las guías de scripts, Helm, monitoreo, seguridad y análisis de imágenes. Esta página conserva la introducción técnica a la aplicación.
+El [README principal](../README.md) es la portada de la documentación generada. Incluye el índice de la entrega, los comandos de inicio y los enlaces a las guías de pipeline, comandos de CI, scripts, Helm, monitoreo, seguridad y análisis de imágenes. Esta página conserva la introducción técnica a la aplicación.
 
 PlayHub es una aplicación web académica orientada a la gestión y distribución de videojuegos.
 
@@ -82,6 +82,8 @@ frontend/src
 docs
 README.md
 scripts/README.md
+scripts/ci/README.md
+jenkins/README.md
 helm-chart/README.md
 reports/image-analysis.md
 ```

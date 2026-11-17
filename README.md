@@ -23,6 +23,8 @@ Esta es la documentación central de la entrega: describe los contenedores, el d
 | Documento | Contenido |
 | --- | --- |
 | [Guía de scripts](scripts/README.md) | Comandos Bash y PowerShell, parámetros, carga de tráfico, seguridad, diagnóstico y limpieza. |
+| [Pipeline de Jenkins](jenkins/README.md) | Configuración del job, credenciales, parámetros, etapas, artefactos y límites de la implementación actual. |
+| [Comandos de CI y despliegue](scripts/ci/README.md) | Publicación de imágenes, despliegue remoto, secretos, verificaciones y limpieza mediante los scripts existentes. |
 | [Helm Chart](helm-chart/README.md) | Instalación, valores por entorno, recursos y persistencia. |
 | [Monitoreo](docs/monitoring.md) | Dashboards, consultas, verificación de métricas y actualización de los JSON. |
 | [Seguridad y resultados](docs/security.md) | Semgrep, Snyk, Trivy, Kyverno y Falco, con alcance y límites de los reportes. |
@@ -114,7 +116,7 @@ El instalador permite elegir otra carpeta; si se cambia, agregarla a `PATH`. En 
 
 Si Kyverno o Falco ya existen sin el marcador de propiedad de los scripts, el despliegue puede detenerse para conservar esa instalación. Las opciones para omitir o adoptar seguridad se explican en [scripts/README.md](scripts/README.md).
 
-En desarrollo, las credenciales provienen de `helm-chart/values.yaml`. **El script Helm no carga `.env`.** El entorno `prod` exige pasar las credenciales como parámetros y un secreto JWT de al menos 48 bytes UTF-8. Ver [helm-chart/README.md](helm-chart/README.md).
+En desarrollo local, las credenciales provienen de `helm-chart/values.yaml`. Los scripts no cargan `.env` automáticamente. La variante Bash también permite pasar explícitamente un archivo con `--secrets-file`; su uso en CI se documenta en [scripts/ci/README.md](scripts/ci/README.md). El entorno `prod` exige credenciales y un secreto JWT de al menos 48 bytes UTF-8. Ver [helm-chart/README.md](helm-chart/README.md).
 
 ### Accesos y comprobaciones
 
@@ -139,7 +141,15 @@ La migración `V2__demo_data.sql` incluye usuarios de demostración con contrase
 
 ## 3. Integración y entrega continua - Jenkins
 
-**TBD**
+La definición actual está en `jenkins/Jenkinsfile`. Realiza checkout, análisis estático con Semgrep, build y verificación del backend, lint/build del frontend, y construcción y publicación de ambas imágenes. Backend y frontend se procesan en paralelo.
+
+El tag combina número de build y commit corto. El frontend incorpora la URL pública durante su construcción, y el despliegue utiliza el mismo tag publicado.
+
+El stage de Helm corre solamente con `DEPLOY=true`, cuyo valor predeterminado es `false`. Recibe kubeconfig y secretos desde credenciales Jenkins y utiliza el recorrido remoto de `scripts/deploy-helm.sh`. Ese recorrido omite el monitoreo Prometheus/Grafana del release; no se debe atribuir al clúster público el monitoreo que se demuestra en Minikube.
+
+La [guía de la pipeline](jenkins/README.md) detalla herramientas, configuración del job, credenciales, parámetros, etapas y artefactos. Los [comandos de CI](scripts/ci/README.md) explican cómo usar los scripts fuera de Jenkins.
+
+Quedan pendientes la incorporación de Snyk, el bloqueo de Semgrep por hallazgos y las decisiones sobre el agente y el monitoreo remoto. La documentación refleja el código actual; no se adjunta una ejecución nueva de Jenkins como evidencia.
 
 ## 4. Monitoreo y observabilidad
 
@@ -250,6 +260,6 @@ Con Doxygen instalado, ejecutar desde la raíz:
 doxygen Doxyfile
 ```
 
-El nombre del archivo es `Doxyfile`, respetando mayúsculas y minúsculas. La salida se abre en `docs/generated/html/index.html`. El README central se utiliza como portada e incluye navegación a las guías de scripts, Helm, monitoreo, seguridad, análisis de imágenes y arquitectura del código.
+El nombre del archivo es `Doxyfile`, respetando mayúsculas y minúsculas. La salida se abre en `docs/generated/html/index.html`. El README central se utiliza como portada e incluye navegación a las guías de la pipeline, comandos de CI, scripts, Helm, monitoreo, seguridad, análisis de imágenes y arquitectura del código.
 
 Los HTML son archivos generados y están excluidos de Git. Se editan los Markdown y el código fuente, y luego se vuelve a ejecutar Doxygen. No hace falta iniciar Kubernetes para generar esta documentación.

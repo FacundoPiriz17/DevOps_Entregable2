@@ -2,14 +2,17 @@
 
 Esta guía amplía el [README principal](../README.md). Los ejemplos se ejecutan desde la **raíz del repositorio**, aunque este documento se encuentre en `scripts/`. Se documentan opciones existentes; los resultados esperados no son nuevas evidencias de ejecución.
 
+Los comandos de publicación y despliegue utilizados por Jenkins se amplían en [scripts/ci/README.md](ci/README.md). La configuración del job, sus parámetros y credenciales se mantienen en [jenkins/README.md](../jenkins/README.md).
+
 ## Elegir la modalidad de despliegue
 
 | Modalidad | Despliegue | Limpieza | Alcance |
 | --- | --- | --- | --- |
 | Helm, recorrido principal | `deploy-helm.sh` / `deploy-helm.ps1` | `cleanup-helm.sh` / `cleanup-helm.ps1` | Release `playhub`, namespace `playhub-helm`, slot `helm`. |
+| Helm remoto de CI, Bash | `deploy-helm.sh --registry ...` | `cleanup-helm.sh` con kubeconfig y namespace del destino | Imágenes ya publicadas, Ingress y namespace parametrizados. |
 | Manifiestos Blue/Green | `deploy.sh` / `deploy.ps1` | `cleanup.sh` / `cleanup.ps1` | Namespace del contexto activo; Blue y, opcionalmente, Green. |
 
-Ambas modalidades incluyen monitoreo y utilizan el mismo stack de seguridad compartido. No intercambiar sus scripts de limpieza. Las alternativas de los ejemplos son excluyentes: elegir Bash o PowerShell y la modalidad correspondiente.
+Los recorridos locales incluyen monitoreo y utilizan el stack de seguridad compartido. El recorrido remoto Bash deshabilita el monitoreo del release; la pipeline usa `SECURITY_MODE=skip` por defecto. No intercambiar los scripts de limpieza de Helm y Blue/Green. Las alternativas de los ejemplos son excluyentes: elegir Bash o PowerShell y la modalidad correspondiente.
 
 ## Preparar herramientas y clúster
 
@@ -48,7 +51,7 @@ bash scripts/deploy-helm.sh
 .\scripts\deploy-helm.ps1
 ```
 
-El script construye, carga las imágenes en Minikube, valida el chart, prepara seguridad, instala o actualiza el release, espera los recursos, ejecuta el hook de prueba y abre los accesos de frontend, backend, Prometheus y Grafana.
+El recorrido local construye, carga las imágenes en Minikube, valida el chart, prepara seguridad, instala o actualiza el release, espera los recursos, ejecuta el hook de prueba y abre los accesos de frontend, backend, Prometheus y Grafana. La tabla siguiente contiene las opciones locales comunes a Bash y PowerShell; las opciones remotas adicionales de Bash se detallan en [la guía de CI](ci/README.md).
 
 | Bash | PowerShell | Comportamiento |
 | --- | --- | --- |
@@ -94,8 +97,9 @@ imágenes ya publicadas por la pipeline y despliega en un cluster remoto.
 ### Cluster local (Minikube)
 
 ```bash
-./scripts/deploy-helm.sh
-./scripts/deploy-helm.sh --environment prod --db-password X --jwt-secret Y --admin-password Z
+bash scripts/deploy-helm.sh
+# Alternativa para prod, después de preparar el archivo de secretos:
+bash scripts/deploy-helm.sh --environment prod --secrets-file ./playhub-app-secrets.env
 ```
 
 ### Cluster público con kubeconfig, DNS y TLS
@@ -105,7 +109,7 @@ Requisitos previos en el cluster:
 - Ingress controller instalado (la `IngressClass` se pasa con `--ingress-class`: `nginx`, `traefik`, `apisix`, etc.).
 - Registro DNS del host apuntando a la IP pública del Ingress.
 - Para TLS gestionado por el chart: `cert-manager` instalado y un `ClusterIssuer` de Let's Encrypt (por defecto `letsencrypt-prod`). Si el HTTPS lo termina la plataforma (por ejemplo APISIX con certificado wildcard), no uses `--tls`: alcanza con `--public-scheme https` para que la app genere URLs/cookies seguras.
-- Imágenes públicas en el registry, o credenciales para crear el `imagePullSecret` (modo remoto usa `REG_USER` y `REG_PASS`).
+- Imágenes ya publicadas y credenciales `REG_USER` y `REG_PASS` para crear el `imagePullSecret`. La implementación actual exige esas variables también si las imágenes son públicas.
 - Para Kyverno/Falco: kubeconfig con permisos de administrador (CRDs, ClusterRoles, webhooks y namespaces), egress desde Jenkins hacia GitHub y el repo de charts de Falco, y desde los nodos hacia `reg.kyverno.io`, `ghcr.io` y Docker Hub.
 - Cluster dedicado al equipo: las políticas de Kyverno se aplican en modo `Enforce` a todo el cluster salvo los namespaces de sistema. En un cluster compartido usar `--skip-security`.
 
@@ -149,28 +153,29 @@ cert-manager al Ingress. Si el namespace ya existe, el script no intenta
 crearlo; si no puede consultarlo por RBAC, asume que existe y continúa.
 
 El archivo de `--secrets-file` usa el formato de
-[`jenkins/app-secrets.env.example`](../jenkins/app-secrets.env.example) y define
-`DB_PASSWORD`, `JWT_SECRET` (48+ bytes) y `ADMIN_PASSWORD`; nunca se pasa por
-argumentos para no exponerlo en el historial.
+`jenkins/app-secrets.env.example` y define `DB_PASSWORD`, `JWT_SECRET` (48+ bytes)
+y `ADMIN_PASSWORD`. Con esta opción se pasa la ruta del archivo, no los valores
+literales en argumentos. La preparación y lectura del token del registry se
+detallan en [la guía de CI](ci/README.md).
 
-En modo remoto el script valida el `kubeconfig`, la versión de Kubernetes y la
-`IngressClass`; si se usa `--tls`, también valida el `ClusterIssuer` y los
-permisos para instalar el stack de seguridad. Luego instala Kyverno y Falco (o los
-registra con `--adopt-security`), prepara el namespace `falco` para el driver eBPF
-privilegiado, crea el namespace de la app si no existe y el `imagePullSecret`
-(`regcred`), despliega con `helm upgrade --install --atomic --wait --timeout 10m`,
-muestra el estado de las políticas y del DaemonSet de Falco, y con `--verify`
-comprueba `https://HOST/login` con reintentos.
+En modo remoto el script comprueba conectividad con el `kubeconfig`, informa la
+versión de Kubernetes y consulta la `IngressClass`. Con `--tls`, verifica el
+`ClusterIssuer`. Si no se omite la seguridad, comprueba los permisos del stack,
+instala o adopta Kyverno/Falco y consulta su estado; en instalación prepara
+también el namespace `falco` para el driver eBPF privilegiado. Después prepara
+el namespace de la app y `regcred`, despliega con
+`helm upgrade --install --atomic --wait --timeout 10m` por defecto y ejecuta
+`helm test`. Con `--verify`, comprueba `/login` en la URL pública y esquema
+seleccionados. Los chequeos externos posteriores no forman parte del rollback
+automático de la operación Helm ya finalizada.
 
 El modo remoto omite la construcción y carga de imágenes, el monitoreo
 Prometheus/Grafana del release y los port-forwards. Si Kyverno/Falco ya existen y
 no son exactamente las versiones del proyecto, el script se detiene para no
 modificar instalaciones ajenas: en ese caso usar `--skip-security` o coordinar
-con quien administre el cluster. Para omitir el stack en un cluster compartido:
-
-```bash
-./scripts/deploy-helm.sh ... --skip-security
-```
+con quien administre el cluster. El ejemplo completo del laboratorio mostrado
+arriba ya incluye `--skip-security`. Los comandos usan tags de ejemplo: reemplazarlos
+por los realmente publicados o seguir el recorrido completo de [scripts/ci/README.md](ci/README.md).
 
 ### Desde Jenkins
 
@@ -188,12 +193,12 @@ son `NAMESPACE` (default `alumno-team9`), `PUBLIC_HOST`, `PUBLIC_SCHEME`,
 `INGRESS_CLASS` (default `apisix`), `VALUES_ENV` (`dev`/`prod`, default `dev`),
 `TLS_ISSUER` y `SECURITY_MODE` (default `skip`; también `install` o `adopt`).
 Después del deploy, si la seguridad no está en `skip`, el pipeline guarda el
-estado de las políticas y de Falco en `reports/security-stack.txt`.
+estado de las políticas y de Falco en `reports/security-stack.txt`. Es un resumen
+de consultas de estado, no una prueba de rechazo de pods o de eventos Falco.
 
-## `switch-slot.sh` / `switch-slot.ps1`
 Las etiquetas reutilizadas no garantizan que el código de una imagen coincida con el checkout actual. Si cambia Java, Next.js o `NEXT_PUBLIC_API_URL`, reconstruir la imagen correspondiente.
 
-El detalle de `prod`, Ingress y la instalación manual con `helm install` se mantiene en [helm-chart/README.md](../helm-chart/README.md). Los scripts Helm no leen `.env`.
+El detalle local de `prod`, Ingress y la instalación manual con `helm install` se mantiene en [helm-chart/README.md](../helm-chart/README.md). Los scripts no cargan `.env` automáticamente; Bash permite cargar un archivo explícito con `--secrets-file`. PowerShell conserva su interfaz local. La definición completa de la pipeline está en [jenkins/README.md](../jenkins/README.md).
 
 ## Seguridad compartida del clúster
 

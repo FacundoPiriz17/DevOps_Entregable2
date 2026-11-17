@@ -42,6 +42,8 @@ WARN_AS_ERROR          = NO
 INPUT                  = README.md \
                          docs \
                          scripts/README.md \
+                         scripts/ci/README.md \
+                         jenkins/README.md \
                          helm-chart/README.md \
                          reports/image-analysis.md \
                          backend/src/main/java \
