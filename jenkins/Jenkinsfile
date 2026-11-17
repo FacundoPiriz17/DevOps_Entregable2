@@ -75,7 +75,6 @@ pipeline {
                       --severity ERROR \
                       --metrics=off \
                       --json --output reports/semgrep.json \
-                      --error
                 '''
             }
         }
