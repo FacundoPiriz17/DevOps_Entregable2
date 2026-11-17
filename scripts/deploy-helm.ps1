@@ -324,3 +324,4 @@ finally {
     if ($null -ne $secretsFile) { Remove-Item -LiteralPath $secretsFile -Force -ErrorAction SilentlyContinue }
     Pop-Location
 }
+
