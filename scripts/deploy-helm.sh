@@ -618,7 +618,7 @@ echo "Entorno: $environment"
 echo "Modo: $([[ "$remote" == true ]] && echo remoto || echo local)"
 
 if [[ "$remote" == true ]]; then
-  if ! kubectl --request-timeout=20s cluster-info >/dev/null 2>&1; then
+  if ! kubectl --request-timeout=20s get --raw /version >/dev/null 2>&1; then
     echo "No se pudo contactar el cluster '$current_context'. Revisar el kubeconfig y la conectividad." >&2
     exit 1
   fi
