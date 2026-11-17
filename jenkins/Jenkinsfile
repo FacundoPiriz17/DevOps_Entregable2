@@ -1,0 +1,121 @@
+pipeline {
+
+    agent any
+
+    options {
+        skipDefaultCheckout()
+        disableConcurrentBuilds()
+        timestamps()
+        timeout(time: 25, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
+    }
+
+    environment {
+        REGISTRY   = 'docker.io/agustingarciaa'            // CAMBIAR
+        IMAGE_BE   = "${REGISTRY}/playhub-backend"
+        IMAGE_FE   = "${REGISTRY}/playhub-frontend"
+        NAMESPACE  = 'playhub-helm'
+        RELEASE    = 'playhub'
+        CHART_PATH = 'helm-chart'                      // AJUSTAR si la ruta real difiere
+        HELM_ENV   = 'prod'                              // 'dev' o 'prod'
+        PUBLIC_URL = 'http://localhost:8080'             // CAMBIAR por el origen publico (https://...) antes de desplegar
+    }
+
+
+
+    stages {
+
+        stage("Checkout"){
+            steps {
+                checkout scm
+                    script {
+                    env.GIT_SHORT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT}"
+                    }
+                sh 'mkdir -p reports'
+                echo "Commit ${env.GIT_SHORT} | Tag de imagen ${env.IMAGE_TAG}"
+            }
+        }
+
+        stage("SAST - Semgrep"){
+            steps {
+                 sh '''
+                    set -e
+                    semgrep --version
+
+                    semgrep scan \
+                      --config security/semgrep/rules \
+                      --config p/security-audit \
+                      --config p/owasp-top-ten \
+                      --exclude node_modules --exclude .next --exclude target \
+                      --severity ERROR \
+                      --metrics=off \
+                      --json --output reports/semgrep.json \
+                      --error
+                '''
+            }
+        }
+        stage("Build and Test"){
+            failFast true          // si falla una rama, cancela la otra
+            parallel {
+                stage('Backend') {
+                    steps {
+                        sh '''
+                            docker run --rm \
+                            --volumes-from "$HOSTNAME" \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -u "$(id -u):$(id -g)" -e HOME=/tmp \
+                            -w "$WORKSPACE/backend" \
+                            maven:3.9-eclipse-temurin-26 \
+                            mvn -B clean verify
+                        '''
+                    }
+                    post {
+                        always {
+                            junit testResults: 'backend/target/surefire-reports/*.xml',
+                                allowEmptyResults: false
+                        }
+                    }
+                }
+                stage('Frontend') {
+                    steps {
+                        sh '''
+                            docker run --rm \
+                            --volumes-from "$HOSTNAME" \
+                            -u "$(id -u):$(id -g)" -e HOME=/tmp \
+                            -w "$WORKSPACE/frontend" \
+                            node:22-alpine \
+                            sh -c "npm ci && npm run lint && npm run build"
+                        '''
+                    }
+                }
+            }
+        }
+        stage("Docker Build and Push"){
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-registry', usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
+                    sh './scripts/ci/build-and-push.sh'
+                }
+            }
+        }
+        stage("Deploy Helm"){
+            steps{
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG' )]){
+                    sh './scripts/deploy-helm.sh'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+            junit allowEmptyResults: true, testResults: 'backend/target/surefire-reports/*.xml'
+            cleanWs()
+        }
+        failure {
+            echo "Pipeline detenido con fallo (etapa: ${env.STAGE_NAME ?: 'n/a'}). Revisar logs y reports/."
+        }
+    }
+
+}
