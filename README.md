@@ -146,7 +146,7 @@ La definición actual está en `jenkins/Jenkinsfile`. Realiza checkout, análisi
 
 El tag combina número de build y commit corto. El frontend incorpora la URL pública durante su construcción, y el despliegue utiliza el mismo tag publicado.
 
-El stage de Helm corre en `main` con `DEPLOY=true`, habilitado por defecto. Recibe kubeconfig y secretos desde credenciales Jenkins y utiliza el recorrido remoto de `scripts/deploy-helm.sh`. Por defecto aplica el perfil de recursos `lab` y monitoreo limitado al namespace: Prometheus, Grafana y Blackbox sin permisos de infraestructura ni nuevos PVC. CPU y memoria por pod requieren una fuente de infraestructura adicional; consultar la [guia de monitoreo](monitoring/README.md#monitoreo-limitado-al-namespace-del-laboratorio).
+El stage de Helm corre en `main` con `DEPLOY=true`, habilitado por defecto. Recibe kubeconfig y secretos desde credenciales Jenkins y utiliza el recorrido remoto de `scripts/deploy-helm.sh`. Por defecto aplica el perfil de recursos `lab` y `MONITORING_MODE=disabled` para reducir la cuota necesaria. Prometheus, Grafana y Blackbox se pueden habilitar con `MONITORING_MODE=namespace`, sin permisos de infraestructura ni nuevos PVC. CPU y memoria por pod requieren una fuente de infraestructura adicional; consultar la [guia de monitoreo](monitoring/README.md#monitoreo-limitado-al-namespace-del-laboratorio).
 
 La [guía de la pipeline](jenkins/README.md) detalla herramientas, configuración del job, credenciales, parámetros, etapas y artefactos. Los [comandos de CI](scripts/ci/README.md) explican cómo usar los scripts fuera de Jenkins.
 

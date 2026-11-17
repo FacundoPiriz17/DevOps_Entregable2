@@ -20,7 +20,7 @@ pipeline {
         choice(name: 'SECURITY_MODE', choices: ['skip', 'install', 'adopt'], description: 'Kyverno/Falco: skip (cluster del laboratorio), install o adopt.')
         choice(name: 'VALUES_ENV', choices: ['dev', 'prod'], description: 'Values del chart: dev (1 replica, PVC 1Gi) o prod (2 replicas, PVC 5Gi).')
         choice(name: 'RESOURCE_PROFILE', choices: ['lab', 'standard'], description: 'lab aplica una replica y limites ajustados a la cuota compartida; standard conserva los recursos de dev/prod.')
-        choice(name: 'MONITORING_MODE', choices: ['namespace', 'disabled', 'cluster'], description: 'namespace habilita HTTP/negocio sin RBAC ni nodos; cluster requiere permisos de administrador.')
+        choice(name: 'MONITORING_MODE', choices: ['disabled', 'namespace', 'cluster'], description: 'disabled omite Prometheus, Grafana y Blackbox para reducir recursos; namespace habilita HTTP/negocio; cluster requiere permisos de administrador.')
         booleanParam(name: 'RECOVER_PENDING_INSTALL', defaultValue: true, description: 'Recupera solo el primer install abandonado por mas de una hora, conservando el PVC de PostgreSQL.')
         booleanParam(name: 'VERIFY_DEPLOY', defaultValue: true, description: 'Verifica frontend (200) y API sin autenticar (401); detecta el 503 aunque /login cargue.')
         string(name: 'TLS_ISSUER', defaultValue: 'letsencrypt-prod', description: 'ClusterIssuer de cert-manager usado si MANAGE_TLS=true.')
@@ -83,7 +83,7 @@ pipeline {
                     env.NAMESPACE = (params.NAMESPACE ?: 'alumno-team9').trim()
                     env.HELM_ENV = params.VALUES_ENV ?: 'dev'
                     env.RESOURCE_PROFILE = params.RESOURCE_PROFILE ?: 'lab'
-                    env.MONITORING_MODE = params.MONITORING_MODE ?: 'namespace'
+                    env.MONITORING_MODE = params.MONITORING_MODE ?: 'disabled'
                     env.RECOVER_PENDING_INSTALL = params.RECOVER_PENDING_INSTALL == false ? 'false' : 'true'
                     env.MANAGE_TLS = params.MANAGE_TLS ? 'true' : 'false'
                     env.VERIFY_DEPLOY = params.VERIFY_DEPLOY ? 'true' : 'false'
@@ -105,6 +105,7 @@ pipeline {
                 sh 'mkdir -p reports/ci'
                 echo "Rama ${env.SOURCE_BRANCH} | Commit ${env.GIT_SHORT} | Tag de imagen ${env.IMAGE_TAG}"
                 echo "Deploy Helm: ${env.DEPLOY_REASON}"
+                echo "Perfil de recursos: ${env.RESOURCE_PROFILE} | Monitoreo: ${env.MONITORING_MODE}"
             }
         }
 
@@ -132,6 +133,7 @@ pipeline {
                     set -eu
                     helm lint helm-chart -f helm-chart/values-dev.yaml
                     helm lint helm-chart -f helm-chart/values-dev.yaml -f helm-chart/values-lab.yaml
+                    helm lint helm-chart -f helm-chart/values-dev.yaml -f helm-chart/values-lab.yaml --set monitoring.enabled=false
                     # Solo validacion local: no crea ni consulta este Secret.
                     helm lint helm-chart -f helm-chart/values-prod.yaml --set-string secrets.existingSecret=ci-validation-only
                 '''

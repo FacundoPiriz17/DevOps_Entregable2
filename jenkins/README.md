@@ -82,7 +82,7 @@ Los valores efectivos se establecen en el stage `Checkout`:
 | `SECURITY_MODE` | `skip` | `skip`, `install` o `adopt` para Kyverno/Falco. |
 | `VALUES_ENV` | `dev` | Archivo `values-dev.yaml` o `values-prod.yaml`. |
 | `RESOURCE_PROFILE` | `lab` | Aplica `values-lab.yaml` despues de dev/prod: una replica, actualizaciones `Recreate`, limites compactos y monitoreo sin PVC. `standard` conserva el dimensionamiento original. |
-| `MONITORING_MODE` | `namespace` | Prometheus, Grafana y Blackbox solo en el namespace, sin RBAC ni nodos. `disabled` los omite; `cluster` requiere permisos de infraestructura. |
+| `MONITORING_MODE` | `disabled` | Omite Prometheus, Grafana y Blackbox para reducir recursos. `namespace` los habilita sin RBAC ni nodos; `cluster` requiere permisos de infraestructura. |
 | `RECOVER_PENDING_INSTALL` | `true` | Permite recuperar exclusivamente el primer install pendiente de mas de una hora. Ver condiciones debajo. |
 | `VERIFY_DEPLOY` | `true` | Agrega la comprobación de la URL pública si se ejecuta el despliegue. |
 | `TLS_ISSUER` | `letsencrypt-prod` | ClusterIssuer requerido si `MANAGE_TLS=true`. |
@@ -90,6 +90,8 @@ Los valores efectivos se establecen en el stage `Checkout`:
 | `APP_SECRETS_CREDENTIALS_ID` | `playhub-app-secrets` | ID de la credencial del archivo de secretos. |
 
 Para construir y publicar sin desplegar, ejecutar el job con `DEPLOY=false`. Para el recorrido remoto del laboratorio, seleccionar `DEPLOY=true`, revisar host/namespace/credenciales y conservar `SECURITY_MODE=skip` si la seguridad es administrada por la plataforma.
+
+Para reintentar un job existente, seleccionar explicitamente `MONITORING_MODE=disabled` en **Build with Parameters**, porque Jenkins puede conservar el valor de una ejecucion anterior. Con el perfil `lab`, los limites de CPU de los pods de la aplicacion suman 600m, frente a 850m con monitoreo; `helm test` agrega temporalmente 100m. Este cambio reduce los recursos necesarios, pero no resuelve la falta de almacenamiento efimero en los nodos ni garantiza cuota libre en el namespace compartido.
 
 `MANAGE_TLS=false` no obliga a usar HTTP: la plataforma puede terminar HTTPS por fuera del bloque TLS gestionado por el chart. Por eso `PUBLIC_SCHEME` es un parámetro separado.
 
@@ -99,7 +101,7 @@ Para construir y publicar sin desplegar, ejecutar el job con `DEPLOY=false`. Par
 | --- | --- | --- |
 | 1 | `Checkout` | `checkout scm`, commit corto y tag `${BUILD_NUMBER}-${GIT_SHORT}`; prepara parámetros y crea `reports/`. |
 | 2 | `SAST - Semgrep` | Ejecuta las reglas locales versionadas; `--severity ERROR --error` detiene la pipeline ante hallazgos. Excluye dependencias, builds, temporales y reportes; genera `reports/ci/semgrep.json`. |
-| 2b | `Validate Helm` | Valida dev, lab y prod antes de construir/publicar imagenes, incluso si no se despliega. Prod usa una referencia ficticia a un Secret solo para lint local. |
+| 2b | `Validate Helm` | Valida dev, lab con y sin monitoreo, y prod antes de construir/publicar imagenes, incluso si no se despliega. Prod usa una referencia ficticia a un Secret solo para lint local. |
 | 3 | `Build and Test` | Ejecuta las ramas Backend y Frontend en paralelo, con `failFast true`. |
 | 3a | `Backend` | Contenedor `maven:3.9-eclipse-temurin-26`, workspace compartido, socket Docker y configuración de host para Testcontainers; ejecuta `mvn -B clean verify`. Publica Surefire con JUnit. |
 | 3b | `Frontend` | Contenedor `node:22-alpine`; ejecuta `npm ci`, `npm run lint` y `npm run build`. No hay un comando de tests de frontend en este stage. |
@@ -125,7 +127,7 @@ La publicación y el despliegue usan el mismo `IMAGE_TAG`. El despliegue remoto:
 
 1. Utiliza el kubeconfig entregado por Jenkins y comprueba conectividad y configuración de Ingress. Las consultas de preparación tienen timeout de 20 segundos por petición; la lectura de `/version` reintenta hasta tres veces ante fallos transitorios y conserva el error real de conexión, autenticación o TLS.
 2. Omite construir/cargar imágenes y abrir port-forward; usa las imágenes del registry.
-3. Habilita monitoreo limitado al namespace por defecto. El descubrimiento de los pods de backend usa DNS de un Service headless, sin permisos para consultar la API Kubernetes. El perfil `lab` usa almacenamiento efimero para no crear mas PVC.
+3. Jenkins omite el monitoreo por defecto mediante `--no-monitoring`, conservando el PVC de PostgreSQL. Con `MONITORING_MODE=namespace`, habilita Prometheus, Grafana y Blackbox; el descubrimiento del backend usa DNS de un Service headless, sin permisos para consultar la API Kubernetes. El perfil `lab` usa almacenamiento efimero para el monitoreo y evita crear mas PVC.
 4. Omite, instala o adopta Kyverno/Falco según `SECURITY_MODE`.
 5. Genera un archivo temporal de valores con secretos, imágenes, Ingress, CORS y cookies; lo elimina al terminar.
 6. Ejecuta `helm lint`, prepara el namespace cuando corresponde y crea/actualiza `regcred` con las credenciales del registry.

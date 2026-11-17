@@ -122,6 +122,7 @@ bash scripts/deploy-helm.sh \
   --ingress-class apisix \
   --secrets-file ./playhub-app-secrets.env \
   --skip-security \
+  --no-monitoring \
   --verify
 ```
 
@@ -129,7 +130,7 @@ Si las imágenes fueron publicadas por Jenkins, definir `IMAGE_TAG` con el tag q
 
 Este ejemplo utiliza los nombres predeterminados del job; no afirma que el archivo `team9.kubeconfig`, las credenciales, DNS o permisos estén incluidos en Git. `--skip-security` conserva las instalaciones administradas por la plataforma. El script exige `REG_USER` y `REG_PASS` y crea el imagePullSecret incluso si las imágenes son públicas.
 
-La ruta remota omite build, carga a Minikube y port-forward. Habilita Prometheus y Grafana en modo `namespace` y aplica el perfil `lab` por defecto. El descubrimiento usa DNS y no necesita Roles ni acceso a nodos. El monitoreo usa `emptyDir` para no consumir PVC adicionales; sus historicos se pierden al recrear los pods. PostgreSQL conserva su PVC. Los limites de CPU de PlayHub suman 850m sin el pod temporal de Helm test (100m). `--no-monitoring` lo deshabilita; `--resource-profile standard --monitoring-mode cluster` requiere cuotas y permisos de infraestructura suficientes.
+La ruta remota omite build, carga a Minikube y port-forward, y aplica el perfil `lab` por defecto. El ejemplo usa `--no-monitoring`, igual que Jenkins con `MONITORING_MODE=disabled`: los limites de CPU de los pods de la aplicacion suman 600m y el pod temporal de Helm test agrega 100m. PostgreSQL conserva su PVC. Sin esa opcion, el script Bash habilita monitoreo en modo `namespace` y los limites suman 850m, mas el test. El descubrimiento usa DNS y no necesita Roles ni acceso a nodos; el monitoreo usa `emptyDir` para no consumir PVC adicionales. `--resource-profile standard --monitoring-mode cluster` requiere cuotas y permisos de infraestructura suficientes. Deshabilitar monitoreo no resuelve la falta de almacenamiento efimero del nodo.
 
 Para TLS gestionado por el propio Ingress, se agregan `--tls --tls-issuer NOMBRE`, siempre que exista cert-manager y ese ClusterIssuer. Si HTTPS termina en la plataforma, como en el ejemplo, se utiliza `--public-scheme https` sin `--tls`.
 
@@ -244,6 +245,6 @@ El punto final selecciona la raíz del checkout, equivalente al destino implíci
 | No se encuentra un tag en Kubernetes | Comparar el tag del build/push con `--image-tag` y los repositorios efectivos. |
 | Error de secretos o JWT | Revisar las tres claves del archivo y longitud del JWT, sin imprimir los valores en consola. |
 | Ingress/TLS no verificable | Revisar DNS, IngressClass, terminación HTTPS y, si se usa `--tls`, el ClusterIssuer. |
-| No aparecen Grafana/Prometheus tras el deploy | Revisar `MONITORING_MODE`, cuotas y eventos. El modo namespace los habilita por defecto. |
+| No aparecen Grafana/Prometheus tras el deploy | Jenkins usa `MONITORING_MODE=disabled` por defecto. Para habilitarlos, seleccionar `namespace` y revisar cuotas y eventos. En Bash, omitir `--no-monitoring`. |
 
 El detalle del flujo y sus pendientes se mantiene en [jenkins/README.md](../../jenkins/README.md).
