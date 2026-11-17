@@ -27,6 +27,7 @@ Esta es la documentación central de la entrega: describe los contenedores, el d
 | [Comandos de CI y despliegue](scripts/ci/README.md) | Publicación de imágenes, despliegue remoto, secretos, verificaciones y limpieza mediante los scripts existentes. |
 | [Helm Chart](helm-chart/README.md) | Instalación, valores por entorno, recursos y persistencia. |
 | [Monitoreo](docs/monitoring.md) | Dashboards, consultas, verificación de métricas y actualización de los JSON. |
+| [Prometheus y Grafana](monitoring/README.md) | Componentes, recopilación de métricas e integración del monitoreo. |
 | [Seguridad y resultados](docs/security.md) | Semgrep, Snyk, Trivy, Kyverno y Falco, con alcance y límites de los reportes. |
 | [Análisis de imágenes](reports/image-analysis.md) | Medición con Dive, capas y oportunidades de optimización. |
 | [Backend](docs/backend.md) y [frontend](docs/frontend.md) | Organización interna de la aplicación. |

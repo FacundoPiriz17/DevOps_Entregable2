@@ -85,6 +85,7 @@ scripts/README.md
 scripts/ci/README.md
 jenkins/README.md
 helm-chart/README.md
+monitoring/README.md
 reports/image-analysis.md
 ```
 
