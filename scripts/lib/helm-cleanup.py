@@ -22,7 +22,7 @@ class HelmCleanup(security.SecurityStack):
             raise RuntimeError(f'No se elimina el namespace protegido {namespace}.')
         if delete_namespace and not delete_data:
             raise RuntimeError('--delete-namespace requiere --delete-data porque elimina todos los PVC del namespace.')
-        releases = json.loads(self.run('helm', 'list', '-n', namespace, '--all', '-o', 'json'))
+        releases = self.helm_releases(namespace)
         target = next((item for item in releases if item['name'] == release), None)
         if target and not target.get('chart', '').startswith('playhub-'):
             raise RuntimeError('El release indicado no pertenece al chart PlayHub; se conserva.')

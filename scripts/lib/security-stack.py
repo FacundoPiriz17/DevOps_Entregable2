@@ -63,6 +63,13 @@ class SecurityStack:
         output = self.run('kubectl', *args)
         return json.loads(output) if output else None
 
+    def helm_releases(self, namespace, *filters):
+        # Helm 4 removed --all; explicit states also include pending releases on Helm 3.
+        return json.loads(self.run(
+            'helm', 'list', '-n', namespace,
+            '--deployed', '--failed', '--pending', '--superseded', '--uninstalled', '--uninstalling',
+            *filters, '-o', 'json'))
+
     def apply_json(self, document):
         with tempfile.TemporaryDirectory(prefix='playhub-security-') as directory:
             manifest = Path(directory) / 'resources.json'
@@ -159,7 +166,7 @@ class SecurityStack:
         self.install_falco()
 
     def falco_release(self):
-        releases = json.loads(self.run('helm', 'list', '-n', 'falco', '--all', '--filter', '^falco$', '-o', 'json'))
+        releases = self.helm_releases('falco', '--filter', '^falco$')
         return next((release for release in releases if release['name'] == 'falco'), None)
 
     def install_falco(self):
