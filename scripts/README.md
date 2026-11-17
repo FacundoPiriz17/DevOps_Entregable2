@@ -1,81 +1,87 @@
-# Scripts de despliegue (PlayHub en Kubernetes)
+# Guía de scripts de PlayHub
 
-Esta carpeta contiene los scripts para desplegar PlayHub en un cluster de Kubernetes usando la estrategia Blue/Green, y para alternar entre los slots Blue y Green. Los scripts de despliegue, cambio de slot y Falco tienen dos variantes:
+Esta guía amplía el [README principal](../README.md). Los ejemplos se ejecutan desde la **raíz del repositorio**, aunque este documento se encuentre en `scripts/`. Se documentan opciones existentes; los resultados esperados no son nuevas evidencias de ejecución.
 
-- `*.sh` — Bash, para Linux/macOS o Git Bash/WSL en Windows.
-- `*.ps1` — PowerShell, para Windows.
+## Elegir la modalidad de despliegue
 
-## Requisitos previos
+| Modalidad | Despliegue | Limpieza | Alcance |
+| --- | --- | --- | --- |
+| Helm, recorrido principal | `deploy-helm.sh` / `deploy-helm.ps1` | `cleanup-helm.sh` / `cleanup-helm.ps1` | Release `playhub`, namespace `playhub-helm`, slot `helm`. |
+| Manifiestos Blue/Green | `deploy.sh` / `deploy.ps1` | `cleanup.sh` / `cleanup.ps1` | Namespace del contexto activo; Blue y, opcionalmente, Green. |
 
-- Tener `kubectl` instalado y disponible en el `PATH`.
-- Tener el `kubectl context` apuntando al cluster correcto (verificar con `kubectl config current-context`).
-- Ejecutar los scripts desde cualquier ubicación dentro del repo: ambos scripts resuelven automáticamente la raíz del proyecto en base a su propia ubicación.
-- Los manifiestos de Kubernetes deben existir en `k8s/` y `k8s/monitoring/`. Las credenciales se toman de `secret.yaml` o se inicializan desde `secret.yaml.example`.
-- Las migraciones SQL deben existir en `backend/src/main/resources/db/migration`.
-- Si falta `k8s/secret.yaml`, el despliegue lo crea automáticamente copiando `k8s/secret.yaml.example`. Si ya existe, conserva su contenido. El ejemplo contiene los mismos valores del entorno de desarrollo.
-- Kubernetes no requiere `.env`: utiliza `k8s/configmap.yaml` y `k8s/secret.yaml`. `.env` es necesario para Docker Compose; se puede preparar a partir de `.env.example` completando sus valores.
-- El clúster debe disponer de una StorageClass predeterminada para PostgreSQL, Prometheus y Grafana, y permitir los exporters que acceden al nodo Linux.
+Ambas modalidades incluyen monitoreo y utilizan el mismo stack de seguridad compartido. No intercambiar sus scripts de limpieza. Las alternativas de los ejemplos son excluyentes: elegir Bash o PowerShell y la modalidad correspondiente.
 
-## `deploy.sh` / `deploy.ps1`
+## Preparar herramientas y clúster
 
-Despliega la base (ConfigMap, Secret, PostgreSQL), corre las migraciones de Flyway como un Job, y despliega los Services junto con el slot **Blue** (activo por defecto). Opcionalmente también puede desplegar el slot **Green** en paralelo (sin activarlo).
-
-### Qué hace, en orden
-
-1. Verifica que `kubectl` esté disponible.
-2. Aplica `configmap.yaml`, `secret.yaml`, `postgres-pvc.yaml`, `postgres-service.yaml` y `postgres-deployment.yaml`, y espera a que el rollout de PostgreSQL complete.
-3. Genera un ConfigMap (`playhub-migration-sql`) a partir de los archivos SQL de migración y lo aplica. PowerShell utiliza `binaryData` en base64 para preservar los bytes originales incluso con pipelines ASCII de Windows PowerShell 5.1; Kubernetes monta los archivos SQL normalmente.
-4. Elimina el Job `playhub-migrations` si existía, aplica `migration-job.yaml`, espera a que el Job complete y muestra sus logs.
-5. Aplica `backend-service.yaml`, `frontend-service.yaml`, `backend-blue-deployment.yaml` y `frontend-blue-deployment.yaml`, y espera a que ambos rollouts del slot Blue completen.
-6. Si se pide, también despliega el slot Green (`backend-green-deployment.yaml`, `frontend-green-deployment.yaml`).
-7. Despliega `k8s/monitoring/`: Prometheus, Grafana, kube-state-metrics, Node Exporter y cAdvisor para la red de pods. Ajusta el binding de Prometheus al namespace actual y espera los rollouts. En despliegues repetidos reinicia Prometheus y Grafana para cargar sus configuraciones actualizadas.
-8. Muestra un resumen: pods, jobs, PVCs y services.
-9. Inicia automáticamente `kubectl port-forward` para backend (`localhost:8080`), frontend (`localhost:5745`), Prometheus (`localhost:9090`) y Grafana (`localhost:3000`). Los procesos quedan en segundo plano, con PID y log bajo `logs/port-forward-<backend|frontend|prometheus|grafana>.{pid,log}`. Volver a ejecutar el despliegue reemplaza los accesos anteriores. `--no-port-forward` / `-NoPortForward` omite los cuatro accesos, pero despliega el monitoreo igualmente.
-
-Grafana aprovisiona la fuente Prometheus y los dashboards de nodos, workloads y contadores en la carpeta **PlayHub**. El usuario inicial es `admin` y la contraseña inicial es `admin`; se conservan en el PVC después de cambiarlos. Para incorporar dashboards exportados, actualizar su contenido en el ConfigMap de `k8s/monitoring/grafana-config.yaml` antes del deploy. Ver [persistencia y exportación](../monitoring/README.md#persistencia-y-dashboards-exportados).
-
-### Uso — Linux/macOS (Bash)
+Los scripts no crean el clúster. Docker, Minikube, `kubectl` y Python deben estar disponibles. La demo Bash requiere Bash 4+, `curl`, Python 3 y utilidades como `shuf`; la demo PowerShell requiere `curl.exe`.
 
 ```bash
-
-# Inicializa minikube
 minikube start
-# Solo desplegar el slot Blue (activo)
-./scripts/deploy.sh
-
-# Desplegar Blue y también Green (sin activarlo)
-./scripts/deploy.sh --deploy-green
+kubectl config use-context minikube
+bash scripts/install-helm.sh
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Si el script no tiene permisos de ejecución:
+```powershell
+minikube start
+kubectl config use-context minikube
+.\scripts\install-helm.ps1
+```
+
+Opciones del instalador de Helm:
+
+| Bash | PowerShell | Uso |
+| --- | --- | --- |
+| `--version vX.Y.Z` | `-Version vX.Y.Z` | Elegir versión; el valor actual por defecto es `v4.3.1`. |
+| `--install-dir RUTA` | `-InstallDir RUTA` | Cambiar carpeta de instalación. |
+| `--force` | `-Force` | Instalar aunque Helm ya se encuentre en `PATH`. |
+
+El instalador verifica SHA256. Bash instala por defecto en `$HOME/.local/bin`; PowerShell, en `%LOCALAPPDATA%\Programs\helm`. Si se modifica el destino, ajustar `PATH` antes de desplegar.
+
+## Despliegue con Helm
 
 ```bash
-chmod +x scripts/deploy.sh scripts/switch-slot.sh
+bash scripts/deploy-helm.sh
 ```
 
-### Uso — Windows (PowerShell)
-
 ```powershell
-
-# Inicializa minikube
-minikube start
-# Solo desplegar el slot Blue (activo)
-.\scripts\deploy.ps1
-
-# Desplegar Blue y también Green (sin activarlo)
-.\scripts\deploy.ps1 -DeployGreen
+.\scripts\deploy-helm.ps1
 ```
 
-> Nota: si PowerShell bloquea la ejecución de scripts, puede ser necesario ajustar la política de ejecución para la sesión actual:
-> ```powershell
-> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-> ```
+El script construye, carga las imágenes en Minikube, valida el chart, prepara seguridad, instala o actualiza el release, espera los recursos, ejecuta el hook de prueba y abre los accesos de frontend, backend, Prometheus y Grafana.
 
-Para verificar que las migraciones conservan sus bytes al atravesar un pipeline
-ASCII (incluye tildes y otros caracteres UTF-8), sin desplegar ni acceder al cluster:
+| Bash | PowerShell | Comportamiento |
+| --- | --- | --- |
+| `--environment dev` o `prod` | `-Environment dev` o `prod` | Selecciona `values-dev.yaml` o `values-prod.yaml`. |
+| `--namespace NOMBRE` | `-Namespace NOMBRE` | Namespace; por defecto `playhub-helm`. |
+| `--release-name NOMBRE` | `-ReleaseName NOMBRE` | Release; por defecto `playhub`. |
+| `--skip-build` | `-SkipBuild` | Reutiliza las imágenes locales; no reconstruye. |
+| `--skip-image-load` | `-SkipImageLoad` | Omite la importación; las imágenes deben existir en el runtime del clúster. |
+| `--no-port-forward` | `-NoPortForward` | Despliega sin abrir los accesos locales. |
+| `--skip-security` | `-SkipSecurity` | No instala ni adopta Kyverno/Falco. |
+| `--adopt-security` | `-AdoptSecurity` | Registra la instalación compatible existente como instalación de PlayHub. |
+| `--db-password VALOR` | `-DbPassword VALOR` | Credencial obligatoria para `prod`. |
+| `--jwt-secret VALOR` | `-JwtSecret VALOR` | Secreto obligatorio para `prod`, mínimo 48 bytes UTF-8. |
+| `--admin-password VALOR` | `-AdminPassword VALOR` | Credencial obligatoria para `prod`. |
+
+Ejemplos para reutilizar imágenes sin reconstruir, conservando su carga al clúster:
+
+```bash
+bash scripts/deploy-helm.sh --skip-build
+```
 
 ```powershell
-.\scripts\tests\migration-configmap.ps1
+.\scripts\deploy-helm.ps1 -SkipBuild
+```
+
+Si las imágenes ya están cargadas y son las correctas:
+
+```bash
+bash scripts/deploy-helm.sh --skip-build --skip-image-load --no-port-forward
+```
+
+```powershell
+.\scripts\deploy-helm.ps1 -SkipBuild -SkipImageLoad -NoPortForward
 ```
 
 ## `deploy-helm.sh` (Helm: cluster local y cluster público)
@@ -185,223 +191,263 @@ Después del deploy, si la seguridad no está en `skip`, el pipeline guarda el
 estado de las políticas y de Falco en `reports/security-stack.txt`.
 
 ## `switch-slot.sh` / `switch-slot.ps1`
+Las etiquetas reutilizadas no garantizan que el código de una imagen coincida con el checkout actual. Si cambia Java, Next.js o `NEXT_PUBLIC_API_URL`, reconstruir la imagen correspondiente.
 
-Alterna el tráfico de los Services `playhub-backend` y `playhub-frontend` entre los slots `blue` y `green`, cambiando el selector `slot` de cada Service.
+El detalle de `prod`, Ingress y la instalación manual con `helm install` se mantiene en [helm-chart/README.md](../helm-chart/README.md). Los scripts Helm no leen `.env`.
 
-Los accesos a Prometheus y Grafana siguen activos al cambiar de slot; el monitoreo descubre los pods de ambos slots.
+## Seguridad compartida del clúster
 
-### Qué hace, en orden
+Por defecto los despliegues llaman a `lib/security-stack.py`, mediante los wrappers Bash o PowerShell. Esta utilidad instala Kyverno **1.19.2**, aplica las cuatro políticas e instala el chart Falco **9.2.2** con `security/falco/values.yaml`.
 
-1. Verifica que `kubectl` esté disponible.
-2. Obtiene el slot activo actual de `playhub-backend` y `playhub-frontend`, y valida que coincidan (si no, aborta con error de estado inconsistente).
-3. Si el slot pedido ya está activo, informa y termina sin hacer nada.
-4. Verifica que los Deployments del slot destino (`playhub-backend-<target>` y `playhub-frontend-<target>`) estén disponibles (rollout status).
-5. Aplica un patch al selector del Service de backend, y luego al de frontend.
-6. Si falla el patch del frontend, revierte automáticamente el patch del backend al slot anterior.
-7. Muestra el estado final de ambos Services (slot activo por cada uno).
+Si existe una instalación sin el marcador `playhub-security-owner`, el script no la adopta automáticamente:
 
-### Uso — Linux/macOS (Bash)
+- Para utilizar seguridad administrada por fuera del proyecto, elegir `--skip-security` / `-SkipSecurity`.
+- Para registrar una instalación de PlayHub compatible, elegir `--adopt-security` / `-AdoptSecurity`. La utilidad comprueba versiones y recursos antes de continuar.
+- No combinar omisión y adopción: los scripts rechazan esa combinación.
+
+Ejemplos alternativos sobre una instalación existente:
 
 ```bash
-# Activar el slot Blue
-./scripts/switch-slot.sh blue
-
-# Activar el slot Green
-./scripts/switch-slot.sh green
+bash scripts/deploy-helm.sh --skip-build --skip-security
+# Solo si la instalación compatible corresponde a este proyecto:
+bash scripts/deploy-helm.sh --skip-build --adopt-security
 ```
-
-### Uso — Windows (PowerShell)
 
 ```powershell
-# Activar el slot Blue
-.\scripts\switch-slot.ps1 blue
-
-# Activar el slot Green
-.\scripts\switch-slot.ps1 green
+.\scripts\deploy-helm.ps1 -SkipBuild -SkipSecurity
+# Solo si la instalación compatible corresponde a este proyecto:
+.\scripts\deploy-helm.ps1 -SkipBuild -AdoptSecurity
 ```
 
-> Importante: el slot destino (blue o green) debe estar previamente desplegado (ver `deploy.ps1 -DeployGreen` / `deploy.sh --deploy-green`) antes de poder activarlo con `switch-slot`.
-
-### Después de cambiar de slot
-
-Si los port-forward fueron iniciados por `deploy.sh`/`deploy.ps1` (existen `logs/port-forward-backend.pid` y `logs/port-forward-frontend.pid`), `switch-slot` los reinicia automáticamente para que apunten al nuevo slot. Si en cambio estás usando un `kubectl port-forward` manual (por fuera de esos scripts), debés detenerlo y reiniciarlo vos mismo luego de un `switch-slot`.
-
-## `cleanup.sh` / `cleanup.ps1`
-
-Retira la aplicación, el monitoreo, los exporters y sus permisos RBAC, y detiene los cuatro port-forward que registró el despliegue. Conserva por defecto los PVC de PostgreSQL, Prometheus y Grafana. `--delete-data` / `-DeleteData` elimina los tres PVC y sus datos. La limpieza conserva los archivos locales `secret.yaml` y `secret.yaml.example`.
+También hay instaladores independientes:
 
 ```bash
-./scripts/cleanup.sh --dry-run
-./scripts/cleanup.sh
+bash scripts/install-kyverno.sh
+bash scripts/deploy-falco.sh
+```
+
+```powershell
+.\scripts\install-kyverno.ps1
+.\scripts\deploy-falco.ps1
+```
+
+Sus opciones de adopción son `--adopt-existing` y `-AdoptExisting`, respectivamente; no llevan el nombre `AdoptSecurity`. Kyverno acepta además `--version` / `-Version`. Esta opción no implica que las políticas del proyecto hayan sido verificadas con cualquier versión.
+
+## Generar tráfico y poblar los dashboards
+
+Con los cuatro accesos locales activos:
+
+```bash
+bash scripts/demo-monitoring.sh
+bash scripts/demo-monitoring.sh --synthetic-users 8 --burst-seconds 60 --burst-concurrency 12
+```
+
+```powershell
+.\scripts\demo-monitoring.ps1
+.\scripts\demo-monitoring.ps1 -SyntheticUsers 8 -BurstSeconds 60 -BurstConcurrency 12
+```
+
+La segunda invocación de cada bloque es una alternativa con más carga; no hace falta ejecutar ambas. La demo utiliza los usuarios de prueba de `V2__demo_data.sql`, crea usuarios sintéticos, consulta catálogo y biblioteca, realiza compras, provoca errores 4xx y ejecuta una ráfaga concurrente.
+
+| Bash | PowerShell | Valor por defecto / efecto |
+| --- | --- | --- |
+| `--synthetic-users N` | `-SyntheticUsers N` | 5 usuarios. |
+| `--burst-seconds N` | `-BurstSeconds N` | 30 segundos. |
+| `--burst-concurrency N` | `-BurstConcurrency N` | 8 workers. |
+| `--timeout N` | `-TimeoutSec N` | 180 segundos para las esperas de la demo. |
+| `--api-url URL` | `-ApiUrl URL` | `http://localhost:8080`. |
+| `--frontend-url URL` | `-FrontendUrl URL` | `http://localhost:5745`. |
+| `--prometheus-url URL` | `-PrometheusUrl URL` | `http://localhost:9090`. |
+| `--keep-users` | `-KeepUsers` | Conserva activos los usuarios sintéticos. |
+| `--skip-frontend` | `-SkipFrontend` | Omite tráfico al frontend. |
+| `--deploy` | `-Deploy` | Invoca `deploy.sh` / `deploy.ps1`, **no** el script Helm. |
+| `--deploy-green` | `-DeployGreen` | Junto con la anterior, agrega Green al despliegue por manifiestos. |
+| `--cluster-type TIPO` | `-ClusterType TIPO` | Se pasa al despliegue opcional; por defecto `minikube`. |
+
+**Para el recorrido Helm, ejecutar la demo sin `--deploy` / `-Deploy`.** De lo contrario se inicia además la modalidad por manifiestos.
+
+La salida muestra contadores antes y después y chequeos de incrementos: al menos una compra, los logins fallidos previstos, al menos 200 peticiones y target de backend disponible. Código 0 indica que se cumplieron los chequeos de esa corrida; 1 indica fallos y 2 problemas de preparación/disponibilidad. Revisar siempre los mensajes. La desactivación final no elimina las compras ni los registros creados.
+
+## Manifiestos Blue/Green
+
+Esta alternativa usa el namespace del contexto activo. Antes de ejecutarla, comprobar `kubectl config view --minify`; para el recorrido histórico en `default` puede fijarse con `kubectl config set-context --current --namespace=default`.
+
+```bash
+bash scripts/deploy.sh --cluster-type minikube --deploy-green
+bash scripts/switch-slot.sh green
+bash scripts/switch-slot.sh blue
+```
+
+```powershell
+.\scripts\deploy.ps1 -ClusterType minikube -DeployGreen
+.\scripts\switch-slot.ps1 green
+.\scripts\switch-slot.ps1 blue
+```
+
+Los cambios de slot son operaciones independientes: elegir el destino que se quiere activar. `switch-slot` exige que el destino esté desplegado y listo. Actualiza los selectores de los Services estables; si falla el cambio del frontend, revierte el selector del backend. Reinicia los port-forward registrados por el despliegue por manifiestos.
+
+Opciones adicionales de `deploy.sh` / `deploy.ps1`:
+
+| Bash | PowerShell | Uso |
+| --- | --- | --- |
+| `--deploy-green` | `-DeployGreen` | Agrega el slot Green. |
+| `--cluster-type TIPO` | `-ClusterType TIPO` | `auto`, `docker-desktop`, `kind`, `minikube`, `k3d` o `none`. |
+| `--cluster-name NOMBRE` | `-ClusterName NOMBRE` | Perfil/nombre del clúster local. |
+| `--frontend-api-url URL` | `-FrontendApiUrl URL` | URL pública que se incorpora al build del frontend. |
+| `--skip-build`, `--skip-image-load` | `-SkipBuild`, `-SkipImageLoad` | Reutilizar imágenes construidas/cargadas. |
+| `--no-port-forward` | `-NoPortForward` | Omitir accesos locales. |
+| `--skip-security`, `--adopt-security` | `-SkipSecurity`, `-AdoptSecurity` | Misma distinción de seguridad compartida. |
+
+Los secretos de esta modalidad se obtienen de `k8s/secret.yaml`, preparado a partir de `k8s/secret.yaml.example`; ese archivo está excluido de Git. No confundirlos con los valores que utiliza Helm.
+
+## Análisis de seguridad y evidencias
+
+Los siguientes scripts de análisis existen en **PowerShell**; no se presupone una variante Bash que no está en el repositorio:
+
+```powershell
+.\scripts\scan-semgrep.ps1
+.\scripts\audit-frontend.ps1
+.\scripts\lint-kubernetes.ps1
+```
+
+- `scan-semgrep.ps1`: requiere Docker, Git y `tar`. Usa reglas locales versionadas y genera `reports/semgrep_scan-post-mitigacion.txt`, `reports/semgrep-kubernetes-post-mitigacion.txt` y metadatos en `.tmp/security-reports/`. No reescribe `semgrep-report.txt`. No utiliza `--error`; puede terminar con código 0 aunque existan hallazgos.
+- `audit-frontend.ps1`: ejecuta `npm ci` y los audits completo y de producción. `-SkipInstall` omite la instalación. Escribe `reports/npm-audit.txt` y `reports/npm-audit-produccion-post-mitigacion.txt`. Requiere Node y npm locales.
+- `lint-kubernetes.ps1`: ejecuta KubeLinter en Docker sobre `k8s/` y `scripts/flyway-repair.yaml`; genera `reports/kubelinter.txt` y conserva el código de salida de la herramienta.
+- `scan-images.ps1`: escanea las imágenes `v1.0` y exige que sus equivalentes `v2.0` tengan el mismo ID. Es apropiado después del build Blue/Green, que prepara ambas etiquetas; no asumir ese requisito satisfecho por un despliegue Helm aislado. Acepta `-TrivyVersion` y genera los reportes posteriores de Trivy.
+
+Para Trivy después de preparar esas imágenes:
+
+```powershell
+.\scripts\scan-images.ps1
+```
+
+Para Kyverno, la validación completa existente también utiliza imágenes `v1.0`/`v2.0` y el manifiesto Falco renderizado en `.tmp/security-reports/falco-rendered.yaml`, que genera su instalador. Comprobar esos requisitos antes de ejecutar:
+
+```powershell
+.\scripts\validate-kyverno.ps1
+Copy-Item -LiteralPath reports/kyvernovalidation.log -Destination reports/kyverno-validation.log
+```
+
+La copia del segundo comando se realiza después de revisar una validación correcta; adapta el nombre del archivo a la consigna. El script crea pruebas de admisión y un pod válido, comprueba UID no root y limpia el pod de prueba. No es una validación de arranque de todos los servicios renderizados.
+
+El reporte Snyk se conserva en `reports/snyk-report.txt`. No hay un wrapper de Snyk en `scripts/`; el [documento de seguridad](../docs/security.md) distingue esa evidencia de las demás herramientas y de los cambios actuales de dependencias.
+
+## Prueba de Falco válida para el laboratorio 4
+
+Usar la prueba de **enlace simbólico**, no los scripts de shell históricos. Requiere Falco operativo, un backend Ready y Python disponible. Para el release Helm predeterminado:
+
+```bash
+bash scripts/simulate-symlink-attack.sh --namespace playhub-helm --selector app=playhub-backend
+bash scripts/get-falco-symlink-report.sh --wait-seconds 30
+```
+
+```powershell
+.\scripts\simulate-symlink-attack.ps1 -Namespace playhub-helm -LabelSelector app=playhub-backend
+.\scripts\get-falco-symlink-report.ps1 -WaitSeconds 30
+```
+
+Para el despliegue Blue/Green histórico, cambiar el namespace a `default`. Si cambia el nombre base del release Helm, adaptar también el selector de la etiqueta `app`.
+
+Los wrappers Bash utilizan `python3` por defecto. En Git Bash, si el ejecutable se llama `python`, anteponer `PYTHON=python` a cada comando. El ataque crea un enlace temporal hacia `/etc/shadow`, lo elimina y conserva los datos de la corrida en `.tmp/falco-symlink-test.json`. No abre una shell interactiva ni lee el archivo sensible.
+
+El recolector correlaciona la regla, el enlace, el contenedor y la ventana de la corrida. Si encuentra una alerta, escribe `reports/falcoevent.log` y un informe fechado en `reports/falco/`. Si no la encuentra, falla sin reemplazar la evidencia válida anterior. Después de verificar el resultado, se puede adaptar el nombre a la consigna:
+
+```bash
+cp reports/falcoevent.log reports/falco-event.log
+```
+
+```powershell
+Copy-Item -LiteralPath reports/falcoevent.log -Destination reports/falco-event.log
+```
+
+## Limpieza y persistencia
+
+### Release Helm
+
+```bash
+bash scripts/cleanup-helm.sh --dry-run
+bash scripts/cleanup-helm.sh
+```
+
+```powershell
+.\scripts\cleanup-helm.ps1 -WhatIf
+.\scripts\cleanup-helm.ps1
+```
+
+La limpieza normal desinstala el release, detiene sus port-forward y conserva los PVC de PostgreSQL, Prometheus y Grafana, junto con las imágenes y el stack de seguridad.
+
+| Bash | PowerShell | Efecto adicional |
+| --- | --- | --- |
+| `--delete-data` | `-DeleteData` | Borra los PVC y sus datos. |
+| `--delete-namespace` | `-DeleteNamespace` | Borra el namespace del release; **requiere** la opción anterior. |
+| `--remove-images` | `-RemoveImages` | Retira las etiquetas PlayHub contempladas por el script de Docker y Minikube. |
+| `--remove-security` | `-RemoveSecurity` | Retira Kyverno/políticas/Falco registrados por PlayHub si las comprobaciones de propiedad lo permiten. |
+| `--namespace NOMBRE` | `-Namespace NOMBRE` | Debe coincidir con el despliegue. |
+| `--release-name NOMBRE` | `-ReleaseName NOMBRE` | Debe coincidir con el despliegue. |
+| `--minikube-profile NOMBRE` | `-MinikubeProfile NOMBRE` | Perfil del cual retirar imágenes; por defecto `minikube`. |
+| `--dry-run` | `-WhatIf` | Muestra acciones sin realizarlas. |
+
+Ejemplo de limpieza con borrado de datos, retirada de imágenes y seguridad:
+
+```bash
+bash scripts/cleanup-helm.sh --delete-data --delete-namespace --remove-images --remove-security
+```
+
+```powershell
+.\scripts\cleanup-helm.ps1 -DeleteData -DeleteNamespace -RemoveImages -RemoveSecurity
+```
+
+La eliminación de seguridad conserva sus namespaces y rechaza retirar instalaciones ajenas. Una limpieza Helm no elimina los recursos del despliegue Blue/Green que esté en otro namespace.
+
+### Manifiestos Blue/Green
+
+```bash
+bash scripts/cleanup.sh --dry-run
+bash scripts/cleanup.sh --delete-data --remove-images --remove-security
 ```
 
 ```powershell
 .\scripts\cleanup.ps1 -WhatIf
-.\scripts\cleanup.ps1
+.\scripts\cleanup.ps1 -DeleteData -RemoveImages -RemoveSecurity
 ```
 
-## `demo-monitoring.sh` / `demo-monitoring.ps1`
+Estos scripts usan el namespace del contexto activo. Sin las opciones de borrado, conservan datos, imágenes y seguridad. No tienen una opción `DeleteNamespace`.
 
-Genera tráfico real contra la API de PlayHub para alimentar los dashboards de
-Grafana y verificar que la demo de monitoreo produce datos. Usa solamente
-`curl`; la versión Bash requiere también Python 3 para leer JSON y Bash 4+
-(usa `mapfile` y `shuf`). Funciona como smoke test: sale con código
-0 solo si las métricas clave aumentaron en Prometheus.
-
-### Qué hace, en orden
-
-1. Opcionalmente ejecuta `deploy.sh` / `deploy.ps1` con la flag `--deploy` /
-   `-Deploy` (acepta `--deploy-green` / `-DeployGreen` y `--cluster-type` /
-   `-ClusterType`).
-2. Espera a que el backend (`/actuator/health`), el frontend y Prometheus
-   respondan; aborta con código 2 si el backend o Prometheus no están disponibles.
-   Si el frontend no responde, avisa y omite su tráfico. Consulta el estado
-   del target `playhub-backend`; exige que esté `UP` al finalizar.
-3. Lee las métricas base en Prometheus (`failed_logins_total`,
-   `total_purchases_total`, `total_earnings_currency_units_total`,
-   `http_server_requests_seconds_count`).
-4. Genera tráfico: logins fallidos, registro e ingreso de usuarios sintéticos,
-   lecturas de catálogo, carritos con compras (alimenta las métricas de
-   compras y ganancias), wishlist, y errores 4xx (404/400/403).
-5. Aplica una ráfaga de carga concurrente contra backend y frontend para mover
-   CPU, RAM y red de los workloads y del nodo.
-6. Desactiva los usuarios sintéticos con el administrador (salvo
-   `--keep-users` / `-KeepUsers`; usa emails únicos por corrida, por lo que no
-   es necesario limpiar entre ejecuciones).
-7. Espera hasta `--timeout` / `-TimeoutSec` segundos a que Prometheus recolecte
-   las métricas nuevas (el scrape no es inmediato), imprime la tabla antes/después con los
-   deltas y los enlaces a los dashboards. Verifica: logins fallidos >= 15,
-   compras >= 1, requests >= 200 y target UP.
-
-### Uso — Linux/macOS (Bash)
+### Comprobar el resultado
 
 ```bash
-# Con la aplicación ya desplegada
-./scripts/demo-monitoring.sh
-
-# Desplegar primero y generar tráfico
-./scripts/demo-monitoring.sh --deploy --deploy-green
-
-# Más carga
-./scripts/demo-monitoring.sh --synthetic-users 10 --burst-seconds 60 --burst-concurrency 12
+helm list -n playhub-helm
+kubectl get pods,svc,pvc -n playhub-helm
 ```
 
-### Uso — Windows PowerShell
+Después de una limpieza normal no debe aparecer el release, pero **los PVC pueden seguir presentes**. Si se eliminó el namespace, es esperable que la consulta indique que ya no existe o no contiene recursos. La limpieza de aplicación no detiene Minikube.
 
-```powershell
-# Con la aplicación ya desplegada
-.\scripts\demo-monitoring.ps1
-
-# Desplegar primero y generar tráfico
-.\scripts\demo-monitoring.ps1 -Deploy -DeployGreen
-
-# Más carga
-.\scripts\demo-monitoring.ps1 -SyntheticUsers 10 -BurstSeconds 60 -BurstConcurrency 12
-```
-
-### Opciones principales
-
-```text
---deploy / -Deploy              Ejecuta el deploy antes de generar tráfico.
---deploy-green / -DeployGreen   Pasa la opción de Green al deploy.
---api-url / -ApiUrl             Backend (default: http://localhost:8080).
---frontend-url / -FrontendUrl   Frontend (default: http://localhost:5745).
---prometheus-url / -PrometheusUrl  Prometheus (default: http://localhost:9090).
---synthetic-users / -SyntheticUsers  Usuarios sintéticos (default: 5).
---burst-seconds / -BurstSeconds     Duración de la ráfaga (default: 30).
---burst-concurrency / -BurstConcurrency  Workers (default: 8).
---timeout / -TimeoutSec        Espera de disponibilidad y métricas (default: 180 s).
---keep-users / -KeepUsers       No desactiva los usuarios sintéticos.
---skip-frontend / -SkipFrontend No genera tráfico contra el frontend.
-```
-
-Los valores de usuarios, duración, concurrencia y timeout deben ser enteros
-positivos. Cada corrida guarda sus cookies y contadores de carga en un directorio
-único dentro de `logs/`; no borra los archivos de otras corridas. La comprobación
-del frontend sigue las redirecciones HTTP. Si el frontend no responde se omite
-su tráfico y continúa la prueba del backend.
-
-En Windows PowerShell 5.1, el script envía el JSON a `curl.exe` mediante archivos
-temporales UTF-8 para conservar las comillas. Tanto 5.1 como PowerShell 7 están
-soportados. Una consulta inválida de Prometheus o una limpieza incompleta produce
-un resultado fallido.
-La versión Bash puede usarse también desde Git Bash en Windows: normaliza los
-finales de línea al leer JSON. Ambas versiones exigen al menos una compra
-confirmada por su propia corrida, además del incremento observado en Prometheus.
-
-Códigos de salida: `0` para demo verificada, `1` para verificaciones fallidas
-y `2` para requisitos o servicios imprescindibles no disponibles. Los argumentos
-inválidos se rechazan antes de generar tráfico.
-
-Ver [monitoring/README.md](../monitoring/README.md) para más detalles sobre la
-demo de monitoreo.
-
-## Flujo típico de despliegue Blue/Green
+## Diagnóstico y acceso manual
 
 ```bash
-# 1. Desplegar Blue (activo) y Green en paralelo
-./scripts/deploy.sh --deploy-green
-
-# 2. Probar el slot Green por separado (por ejemplo, con port-forward directo al deployment green)
-
-# 3. Cuando esté validado, activar Green
-./scripts/switch-slot.sh green
-
-# 4. Si algo falla, volver a Blue
-./scripts/switch-slot.sh blue
+kubectl get pods -n playhub-helm -o wide
+kubectl get events -n playhub-helm --sort-by=.lastTimestamp
+kubectl logs -n playhub-helm deployment/playhub-backend
+kubectl logs -n playhub-helm deployment/playhub-backend -c flyway-migrate
+kubectl logs -n playhub-helm deployment/playhub-prometheus
+kubectl logs -n playhub-helm deployment/playhub-grafana
 ```
 
-
-## Seguridad del entregable 3
-
-Con Kyverno previamente activo, los Pods auxiliares declaran recursos y
-UID/GID 1000. Al desplegar Blue y Green desde el mismo código, ambos slots
-utilizan la misma imagen de cada componente.
-
-### Uso — Windows PowerShell
-
-```powershell
-.\scripts\install-kyverno.ps1
-.\scripts\deploy.ps1 -DeployGreen
-.\scripts\deploy-falco.ps1
-.\scripts\validate-kyverno.ps1
-.\scripts\simulate-shell-attack.ps1 -Seconds 2
-.\scripts\get-falco-report.ps1
-```
-
-### Uso — Linux/macOS (Bash)
+Si se desplegó con `--no-port-forward` / `-NoPortForward`, abrir cada acceso necesario en una terminal propia:
 
 ```bash
-bash scripts/deploy.sh --deploy-green
-bash scripts/deploy-falco.sh
-bash scripts/simulate-shell-attack.sh --seconds 2
-bash scripts/get-falco-report.sh
+kubectl port-forward -n playhub-helm svc/playhub-frontend 5745:5745
+kubectl port-forward -n playhub-helm svc/playhub-backend 8080:8080
+kubectl port-forward -n playhub-helm svc/playhub-prometheus 9090:9090
+kubectl port-forward -n playhub-helm svc/playhub-grafana 3000:3000
 ```
 
-El instalador del proyecto utiliza Helm y fija el chart de Falco 9.2.2.
-Los scripts de simulación y recolección requieren Python 3.11+. En Git Bash,
-si Python se llama `python`, anteponer `PYTHON=python` a esos dos comandos.
-Las variantes se probaron en Windows con PowerShell y Git Bash.
+Los port-forward manuales se detienen con `Ctrl+C`; no quedan registrados como procesos de los scripts. Los automáticos guardan PID y logs en `logs/`, con prefijo `helm-port-forward-` para Helm y `port-forward-` para los manifiestos.
 
-Sin `-Seconds` / `--seconds`, la shell permanece interactiva hasta `exit`.
-El recolector acepta `-WaitSeconds` / `--wait-seconds` y falla si no encuentra
-una alerta coincidente. Guarda la alerta en `reports/falco-event.log`. Una
-prueba de más de una hora debe repetirse. No usa alertas históricas o de otros
-contenedores como evidencia.
+## Generar la documentación
 
-### Regenerar informes posteriores
-
-```powershell
-.\scripts\audit-frontend.ps1
-.\scripts\scan-semgrep.ps1
-.\scripts\scan-images.ps1
-.\scripts\lint-kubernetes.ps1
+```bash
+doxygen Doxyfile
 ```
 
-Los nombres de los reportes se detallan en
-[DevSecOps.md](../DevSecOps.md#comparación-de-informes).
-
-El audit completo devuelve 1 por las moderadas de desarrollo aceptadas y
-KubeLinter devuelve 1 por sus 21 hallazgos documentados. Semgrep sin `--error`
-puede devolver 0 con hallazgos blocking. No se confunde terminar correctamente
-con quedar libre de hallazgos.
+Se ejecuta desde la raíz y genera `docs/generated/html/index.html`. No despliega la aplicación. La portada y sus referencias se configuran en `Doxyfile`.

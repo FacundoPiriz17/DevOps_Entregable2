@@ -13,6 +13,7 @@ TAB_SIZE               = 4
 OPTIMIZE_OUTPUT_JAVA   = YES
 JAVADOC_AUTOBRIEF      = YES
 MARKDOWN_SUPPORT       = YES
+MARKDOWN_ID_STYLE      = GITHUB
 AUTOLINK_SUPPORT       = YES
 TOC_INCLUDE_HEADINGS   = 3
 
@@ -40,9 +41,13 @@ WARN_AS_ERROR          = NO
 
 INPUT                  = README.md \
                          docs \
+                         scripts/README.md \
+                         helm-chart/README.md \
+                         reports/image-analysis.md \
                          backend/src/main/java \
                          frontend/src
 INPUT_ENCODING         = UTF-8
+IMAGE_PATH             = docs
 FILE_PATTERNS          = *.java \
                          *.js \
                          *.md \
@@ -54,7 +59,9 @@ EXCLUDE_PATTERNS       = */node_modules/* \
                          */target/* \
                          */generated/*
 EXTENSION_MAPPING      = js=JavaScript
-USE_MDFILE_AS_MAINPAGE = docs/mainpage.md
+# La portada se marca con {#mainpage} en el README raiz. Elegir solo README.md
+# por nombre tambien selecciona los README de scripts y helm-chart en Doxygen 1.11.
+USE_MDFILE_AS_MAINPAGE  =
 
 SOURCE_BROWSER         = YES
 INLINE_SOURCES         = NO

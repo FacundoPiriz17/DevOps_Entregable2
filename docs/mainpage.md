@@ -1,4 +1,6 @@
-# PlayHub {#mainpage}
+# Visión técnica de PlayHub {#technical_overview}
+
+El [README principal](../README.md) es la portada de la documentación generada. Incluye el índice de la entrega, los comandos de inicio y los enlaces a las guías de scripts, Helm, monitoreo, seguridad y análisis de imágenes. Esta página conserva la introducción técnica a la aplicación.
 
 PlayHub es una aplicación web académica orientada a la gestión y distribución de videojuegos.
 
@@ -78,6 +80,10 @@ Doxygen analiza principalmente las siguientes ubicaciones:
 backend/src/main/java
 frontend/src
 docs
+README.md
+scripts/README.md
+helm-chart/README.md
+reports/image-analysis.md
 ```
 
 ### Backend
@@ -116,3 +122,11 @@ docs/generated/html
 Este directorio contiene archivos generados automáticamente y no debe mantenerse manualmente.
 
 Siempre que sea posible, la salida generada debe excluirse del control de versiones y regenerarse a partir del código fuente y de los archivos ubicados en `docs`.
+
+Desde la raíz del repositorio, la generación se realiza con:
+
+```bash
+doxygen Doxyfile
+```
+
+La portada resultante es `docs/generated/html/index.html`. Los pendientes de la entrega se identifican como **TBD** en el Markdown principal.

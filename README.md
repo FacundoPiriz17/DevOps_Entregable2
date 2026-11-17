@@ -1,1232 +1,255 @@
-# PlayHub - DevOps Entregable 2 y 3
+# PlayHub - Laboratorio 4: trabajo integrador DevOps {#mainpage}
 
-Proyecto académico de una tienda de videojuegos, con backend en Spring Boot, frontend en Next.js y base de datos PostgreSQL.
+PlayHub es una aplicación académica de catálogo y compra de videojuegos. Permite registrarse, iniciar sesión, consultar juegos, utilizar un carrito, completar compras, administrar una biblioteca y mantener una lista de deseados. Los administradores pueden gestionar usuarios y catálogo.
 
-Incluye migraciones versionadas con Flyway, autenticación mediante JWT, contenedores Docker y despliegue en Kubernetes utilizando una estrategia Blue/Green.
+Esta es la documentación central de la entrega: describe los contenedores, el despliegue con Kubernetes y Helm, la observabilidad y la seguridad presentes en el repositorio. El recorrido de ejecución de esta guía utiliza Kubernetes con Minikube.
 
-La aplicación está compuesta por:
+## Índice
 
-- **Frontend:** Next.js
-- **Backend:** Spring Boot
-- **Base de datos:** PostgreSQL
-- **Migraciones:** Flyway
-- **Autenticación:** JWT
-- **Contenedores:** Docker
-- **Orquestación:** Kubernetes
-- **Cluster local:** Minikube
-- **Estrategia de despliegue:** Blue/Green
-- **Documentación técnica:** Doxygen
+- [Guías y evidencias](#guías-y-evidencias)
+- [Arquitectura del proyecto](#arquitectura-del-proyecto)
+- [1. Contenedores e imágenes](#1-contenedores-e-imágenes)
+- [2. Iniciar el proyecto con Kubernetes y Helm](#2-iniciar-el-proyecto-con-kubernetes-y-helm)
+- [3. Integración y entrega continua - Jenkins](#3-integración-y-entrega-continua---jenkins)
+- [4. Monitoreo y observabilidad](#4-monitoreo-y-observabilidad)
+- [5. Seguridad integrada y resultados disponibles](#5-seguridad-integrada-y-resultados-disponibles)
+- [6. Problemas encontrados y soluciones adoptadas](#6-problemas-encontrados-y-soluciones-adoptadas)
+- [7. Detener y limpiar](#7-detener-y-limpiar)
+- [8. Conclusiones y oportunidades de mejora](#8-conclusiones-y-oportunidades-de-mejora)
+- [9. Generar la documentación con Doxygen](#9-generar-la-documentación-con-doxygen)
 
-El proyecto incluye scripts para automatizar el despliegue, cambio de slot y limpieza del entorno Kubernetes tanto en **Windows PowerShell** como en **Linux/macOS**.
+## Guías y evidencias
 
-Incluye **Prometheus** y **Grafana**, con recolección de recursos y dashboards automáticos para Kubernetes: CPU, RAM, disco, red y throughput de I/O, tanto de nodos como de workloads Blue/Green, además de contadores del backend. Docker Compose conserva los servicios base. Ver [instrucciones de uso](monitoring/README.md).
+| Documento | Contenido |
+| --- | --- |
+| [Guía de scripts](scripts/README.md) | Comandos Bash y PowerShell, parámetros, carga de tráfico, seguridad, diagnóstico y limpieza. |
+| [Helm Chart](helm-chart/README.md) | Instalación, valores por entorno, recursos y persistencia. |
+| [Monitoreo](docs/monitoring.md) | Dashboards, consultas, verificación de métricas y actualización de los JSON. |
+| [Seguridad y resultados](docs/security.md) | Semgrep, Snyk, Trivy, Kyverno y Falco, con alcance y límites de los reportes. |
+| [Análisis de imágenes](reports/image-analysis.md) | Medición con Dive, capas y oportunidades de optimización. |
+| [Backend](docs/backend.md) y [frontend](docs/frontend.md) | Organización interna de la aplicación. |
+| [Convenciones de documentación](docs/documentation-guide.md) | Criterios de documentación del código. |
 
-La seguridad de Kubernetes del entregable 3 se documenta en [kyverno.md](kyverno.md): cuatro políticas Kyverno bloqueantes, pruebas de admisión e informe de KubeLinter en `reports/kubelinter.txt`.
+Los documentos de `docs_EntregasAnteriores/` se conservan como antecedentes. Para ejecutar la versión actual, seguir este README y las guías enlazadas arriba.
 
----
+## Arquitectura del proyecto
 
-## Arquitectura
+### Diagrama final de componentes
 
-```text
-                         ┌─────────────────────┐
-                         │       Usuario       │
-                         └──────────┬──────────┘
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │  Frontend - Next.js │
-                         │      Puerto 5745    │
-                         └──────────┬──────────┘
-                                    │
-                              HTTP / REST
-                                    │
-                                    ▼
-                       ┌─────────────────────────┐
-                       │ Backend - Spring Boot   │
-                       │       Puerto 8080       │
-                       │        JWT / JPA        │
-                       └────────────┬────────────┘
-                                    │
-                                   JDBC
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │     PostgreSQL      │
-                         │       5432          │
-                         └─────────────────────┘
-```
+![Diagrama de componentes DevOps de PlayHub](docs/diagrama_componentes_DevOps.png)
 
-En Kubernetes se mantienen dos slots independientes:
+### Componentes presentes
 
-```text
-                    ┌────────────────────┐
-                    │   Service estable  │
-                    └─────────┬──────────┘
-                              │
-                       selector: slot
-                              │
-               ┌──────────────┴──────────────┐
-               │                             │
-               ▼                             ▼
-        ┌─────────────┐               ┌─────────────┐
-        │    BLUE     │               │    GREEN    │
-        │     v1      │               │     v2      │
-        └─────────────┘               └─────────────┘
-```
+- **Frontend:** Next.js y React. La URL pública de la API se configura al construir la imagen con `NEXT_PUBLIC_API_URL`.
+- **Backend:** Spring Boot, Spring Security, JWT y acceso a datos mediante JPA. Expone OpenAPI/Swagger y métricas con Actuator y Micrometer.
+- **Base de datos:** PostgreSQL con migraciones SQL versionadas. En Helm, un `initContainer` ejecuta Flyway antes de iniciar el backend.
+- **Observabilidad:** Prometheus recolecta métricas de aplicación e infraestructura; Grafana consulta esos datos y provisiona los dashboards del repositorio.
+- **Seguridad:** Kyverno aplica políticas de admisión y Falco observa eventos del runtime. Los scripts administran esas instalaciones como un stack compartido del clúster.
 
-El cambio Blue/Green se realiza modificando el selector `slot` de los Services estables de frontend y backend.
+El recorrido principal utiliza el release `playhub` en el namespace `playhub-helm`. Kyverno y Falco utilizan los namespaces `kyverno` y `falco`. También existen manifiestos Blue/Green en `k8s/`, desplegados mediante `deploy.sh` / `deploy.ps1` en el namespace del contexto activo. Son modalidades distintas; ver [la guía de scripts](scripts/README.md).
 
----
+## 1. Contenedores e imágenes
 
-## Requisitos previos
+| Componente | Archivo de producción | Características presentes |
+| --- | --- | --- |
+| Backend | `backend/Dockerfile.prod` | Dos etapas: Maven compila y una imagen JRE ejecuta el JAR como usuario `spring`, UID 1000. |
+| Frontend | `frontend/Dockerfile.prod` | Etapas de dependencias, compilación y ejecución; elimina dependencias de desarrollo y ejecuta como usuario `node`. |
+| Migraciones auxiliares | `backend/Dockerfile.migrations` | Imagen Flyway con los SQL. El chart usa la imagen oficial y monta los SQL desde un ConfigMap. |
 
-### Aplicación local
+Las bases del backend y frontend están fijadas por digest. Los despliegues utilizan etiquetas explícitas, como `playhub-backend:v1.0` y `playhub-frontend:v1.0`.
 
-- [Docker](https://www.docker.com/)
-- Docker Compose
+El [análisis de Dive del 10 de noviembre de 2026](reports/image-analysis.md) registra **287,81 MiB y 9 capas** para backend, y **719,91 MiB y 11 capas** para frontend. Son medidas de las capas de las imágenes analizadas, no del tamaño comprimido de descarga ni de una reconstrucción posterior.
 
-### Kubernetes
+Las oportunidades identificadas incluyen reducir el runtime y el JAR del backend, excluir la caché de compilación del frontend y evaluar la salida `standalone` de Next.js. Son propuestas; el reporte no afirma que esas optimizaciones ya estén implementadas.
 
-- [Docker](https://www.docker.com/)
-- [Minikube](https://minikube.sigs.k8s.io/)
-- `kubectl`
+## 2. Iniciar el proyecto con Kubernetes y Helm
 
-Comprobar las instalaciones:
+### Requisitos
 
-```bash
-docker --version
-minikube version
-kubectl version --client
-```
+- Docker en funcionamiento; en Windows, Docker Desktop.
+- Minikube y `kubectl` instalados.
+- Helm en `PATH`; el repositorio incluye un instalador.
+- Python 3 para las utilidades de seguridad y limpieza. Las pruebas de Falco documentadas anteriormente utilizan Python 3.11 o superior.
+- Para Bash: Bash 4 o superior, `curl`, `shuf` y Python 3. Para la demo en PowerShell: `curl.exe`.
+- Acceso a los registros de imágenes y a los repositorios de instalación de Kyverno y Falco.
+- Una StorageClass predeterminada para los PVC; Minikube incluye los complementos utilizados para ello.
 
----
-# Levantar la aplicación:
+Ejecutar desde la **raíz del repositorio**. Los scripts despliegan sobre un clúster existente: primero se inicia Minikube.
 
-## *Revisar README en scripts/README.md*
-# Cómo probar la aplicación
+### Windows - PowerShell
 
-## Frontend
-
-Una vez expuesto el frontend:
-
-```text
-http://localhost:5745
-```
-
-Desde allí se pueden probar, según el rol:
-
-- Registro e inicio de sesión.
-- Catálogo de juegos.
-- Carrito.
-- Lista de deseados.
-- Biblioteca.
-- Administración de juegos.
-- Administración de usuarios.
-
----
-
-## Swagger UI
-
-La documentación interactiva del backend está disponible en:
-
-```text
-http://localhost:8080/swagger-ui.html
-```
-
-PlayHub utiliza JWT para la autenticación.
-
-Al iniciar sesión, el backend almacena el JWT en una cookie HttpOnly llamada:
-
-```text
-playhub_session
-```
-
-El backend también soporta autenticación mediante:
-
-```http
-Authorization: Bearer <token>
-```
-
-La aplicación web utiliza principalmente la cookie de sesión.
-
----
-
-# Usuarios de prueba
-
-La migración `V2__demo_data.sql` incluye los siguientes usuarios:
-
-| Nombre | Email | Rol | Contraseña |
-|---|---|---|---|
-| Facundo | `facundo@playhub.test` | Administrador | `PlayHub123` |
-| Santiago | `santiago@playhub.test` | Administrador | `PlayHub123` |
-| Agostina | `agostina@playhub.test` | Usuario general | `PlayHub123` |
-| Agustín | `agustin@playhub.test` | Usuario general | `PlayHub123` |
-
-## Administradores
-
-Permiten probar funcionalidades administrativas como:
-
-- Gestión de juegos.
-- Gestión de usuarios.
-- Operaciones protegidas por rol administrador.
-
-## Usuarios generales
-
-Permiten probar:
-
-- Catálogo.
-- Biblioteca.
-- Deseados.
-- Carrito.
-- Compra de juegos.
-
----
-
-# Despliegue en Kubernetes con Minikube
-
-## 1. Iniciar Minikube utilizando Docker
-
-```bash
-minikube start --driver=docker
-```
-
-Comprobar estado:
-
-```bash
-minikube status
-```
-
-Comprobar el contexto actual:
-
-```bash
-kubectl config current-context
-```
-
-Debería aparecer:
-
-```text
-minikube
-```
-
-Si fuera necesario:
-
-```bash
+```powershell
+docker version
+minikube start
 kubectl config use-context minikube
+.\scripts\install-helm.ps1
+helm version --short
+python --version
+.\scripts\deploy-helm.ps1
 ```
 
-Comprobar la conexión:
-
-```bash
-kubectl cluster-info
-```
-
----
-
-# Desplegar PlayHub
-
-Los scripts de despliegue realizan automáticamente:
-
-Antes de validar los manifiestos, crean `k8s/secret.yaml` desde `k8s/secret.yaml.example` si falta. Conservan el archivo local si ya existe. Kubernetes utiliza el ConfigMap y el Secret; `.env` se usa para Docker Compose.
-
-1. Validación de los manifiestos Kubernetes.
-2. Construcción de las imágenes Docker.
-3. Carga de las imágenes en el runtime del cluster.
-4. Despliegue de PostgreSQL.
-5. Espera hasta que PostgreSQL esté disponible.
-6. Creación del ConfigMap con las migraciones SQL.
-7. Ejecución del Job de Flyway.
-8. Creación de los Services.
-9. Despliegue del slot Blue.
-10. Opcionalmente, despliegue del slot Green.
-11. Despliegue de Prometheus, Grafana y los exporters de recursos.
-12. Verificación del estado de los Deployments y DaemonSets.
-13. Inicio automático de los `port-forward` del frontend, backend, Prometheus y Grafana.
-
----
-
-## Linux/macOS
-
-Dar permisos de ejecución la primera vez:
+### Bash
 
 ```bash
-chmod +x scripts/*.sh
+docker version
+minikube start
+kubectl config use-context minikube
+bash scripts/install-helm.sh
+export PATH="$HOME/.local/bin:$PATH"
+helm version --short
+python3 --version
+bash scripts/deploy-helm.sh
 ```
 
-### Desplegar solamente Blue
+El instalador permite elegir otra carpeta; si se cambia, agregarla a `PATH`. En Bash se invocan los archivos con `bash`, sin depender de su permiso de ejecución.
 
-```bash
-./scripts/deploy.sh --cluster-type minikube
-```
+### Qué hace el despliegue
 
-### Desplegar Blue y Green
+1. Construye las imágenes de producción y las carga en Minikube.
+2. Valida el chart con `helm lint`.
+3. Instala Kyverno, aplica las cuatro políticas e instala Falco, salvo que se solicite omitir la seguridad compartida.
+4. Ejecuta `helm upgrade --install` con `values-dev.yaml`, release `playhub` y namespace `playhub-helm`.
+5. Espera los recursos, muestra pods, servicios y PVC, y ejecuta `helm test`.
+6. Abre los cuatro `port-forward` de la aplicación y el monitoreo.
 
-```bash
-./scripts/deploy.sh --cluster-type minikube --deploy-green
-```
+Si Kyverno o Falco ya existen sin el marcador de propiedad de los scripts, el despliegue puede detenerse para conservar esa instalación. Las opciones para omitir o adoptar seguridad se explican en [scripts/README.md](scripts/README.md).
 
----
+En desarrollo, las credenciales provienen de `helm-chart/values.yaml`. **El script Helm no carga `.env`.** El entorno `prod` exige pasar las credenciales como parámetros y un secreto JWT de al menos 48 bytes UTF-8. Ver [helm-chart/README.md](helm-chart/README.md).
 
-## Windows PowerShell
+### Accesos y comprobaciones
 
-### Desplegar solamente Blue
-
-```powershell
-.\scripts\deploy.ps1 -ClusterType minikube
-```
-
-### Desplegar Blue y Green
-
-```powershell
-.\scripts\deploy.ps1 -ClusterType minikube -DeployGreen
-```
-
----
-
-# Opciones adicionales de deploy
-
-## Linux/macOS
-
-Mostrar ayuda:
+| Servicio | Dirección con los port-forward predeterminados |
+| --- | --- |
+| Aplicación | [http://localhost:5745](http://localhost:5745) |
+| Salud del backend | [http://localhost:8080/actuator/health](http://localhost:8080/actuator/health) |
+| API interactiva | [http://localhost:8080/swagger-ui.html](http://localhost:8080/swagger-ui.html) |
+| Métricas del backend | [http://localhost:8080/actuator/prometheus](http://localhost:8080/actuator/prometheus) |
+| Prometheus | [http://localhost:9090](http://localhost:9090) |
+| Grafana | [http://localhost:3000](http://localhost:3000) |
 
 ```bash
-./scripts/deploy.sh --help
+helm status playhub -n playhub-helm
+kubectl get pods,svc,pvc -n playhub-helm
+helm test playhub -n playhub-helm
 ```
 
-Opciones principales:
+El resultado esperado es que los pods de aplicación y monitoreo estén `Running` y listos, los PVC estén `Bound` y el test termine correctamente. El hook consulta la readiness del backend y `/login` del frontend; no reemplaza una prueba funcional completa ni los análisis de seguridad.
 
-```text
---deploy-green
---cluster-type
---cluster-name
---frontend-api-url
---skip-build
---skip-image-load
---no-port-forward
-```
-
-Ejemplo:
-
-```bash
-./scripts/deploy.sh 
-  --cluster-type minikube 
-  --deploy-green 
-  --frontend-api-url http://localhost:8080
-```
-
-### No iniciar port-forward automáticamente
-
-```bash
-./scripts/deploy.sh 
-  --cluster-type minikube 
-  --no-port-forward
-```
-
----
-
-## Windows PowerShell
-
-Opciones equivalentes:
-
-```text
--DeployGreen
--ClusterType
--ClusterName
--FrontendApiUrl
--SkipBuild
--SkipImageLoad
--NoPortForward
-```
-
-Ejemplo:
-
-```powershell
-.\scripts\deploy.ps1 `
-  -ClusterType minikube `
-  -DeployGreen `
-  -FrontendApiUrl http://localhost:8080
-```
-
----
-
-# Port-forward
-
-Por defecto, los scripts `deploy.sh` y `deploy.ps1` crean automáticamente:
-
-```text
-playhub-backend  -> localhost:8080
-playhub-frontend -> localhost:5745
-playhub-prometheus -> localhost:9090
-playhub-grafana    -> localhost:3000
-```
-
-Por lo tanto, después de ejecutar `deploy` normalmente **no es necesario ejecutar manualmente `kubectl port-forward`**.
-
-Los PID y logs de estos procesos se almacenan en:
-
-```text
-logs/port-forward-backend.pid
-logs/port-forward-backend.log
-
-logs/port-forward-frontend.pid
-logs/port-forward-frontend.log
-
-logs/port-forward-prometheus.pid
-logs/port-forward-prometheus.log
-
-logs/port-forward-grafana.pid
-logs/port-forward-grafana.log
-```
-
----
-
-## Port-forward manual
-
-Solo es necesario si el despliegue se realizó con:
-
-### Linux/macOS
-
-```text
---no-port-forward
-```
-
-### PowerShell
-
-```text
--NoPortForward
-```
-
-En ese caso:
-
-```bash
-kubectl port-forward service/playhub-backend 8080:8080
-```
-
-y en otra terminal:
-
-```bash
-kubectl port-forward service/playhub-frontend 5745:5745
-```
-
----
-
-# Estrategia Blue/Green
-
-PlayHub mantiene dos slots independientes para frontend y backend:
-
-| Slot | Backend | Frontend | Imagen |
-|---|---|---|---|
-| Blue | `playhub-backend-blue` | `playhub-frontend-blue` | `v1.0` |
-| Green | `playhub-backend-green` | `playhub-frontend-green` | `v2.0` |
-
-Los Services estables son:
-
-```text
-playhub-backend
-playhub-frontend
-```
-
-Inicialmente apuntan a:
-
-```yaml
-slot: blue
-```
-
-Para activar Green se modifica el selector a:
-
-```yaml
-slot: green
-```
-
-Esto permite cambiar el tráfico sin cambiar la URL utilizada por los clientes.
-
-> **Nota:** los tags `v1.0` y `v2.0` representan imágenes independientes para los slots Blue y Green. Si ambas imágenes se construyen durante la misma ejecución de `deploy`, pueden contener el mismo código fuente. Para demostrar un cambio real de versión se debe construir cada imagen desde la versión correspondiente del código.
-
----
-
-# Cambiar de slot
-
-> **Importante:** el slot destino debe estar desplegado previamente. Para utilizar Green primero se debe ejecutar `deploy` con `-DeployGreen` o `--deploy-green`.
-
-## Activar Green
-
-### Linux/macOS
-
-```bash
-./scripts/switch-slot.sh green
-```
-
-### Windows PowerShell
-
-```powershell
-.\scripts\switch-slot.ps1 green
-```
-
----
-
-## Volver a Blue
-
-### Linux/macOS
-
-```bash
-./scripts/switch-slot.sh blue
-```
-
-### Windows PowerShell
-
-```powershell
-.\scripts\switch-slot.ps1 blue
-```
-
----
-
-## Verificar el slot activo
-
-```bash
-kubectl get service playhub-backend playhub-frontend \
-  -o custom-columns='SERVICE:.metadata.name,SLOT:.spec.selector.slot'
-```
-
-Ejemplo:
-
-```text
-SERVICE             SLOT
-playhub-backend     blue
-playhub-frontend    blue
-```
-
----
-
-# Port-forward después de un switch
-
-Si los `port-forward` fueron creados por `deploy.sh` o `deploy.ps1`, los scripts `switch-slot` los reinician automáticamente para que apunten a los Pods del nuevo slot.
-
-Por lo tanto, normalmente **no es necesario reiniciarlos manualmente**.
-
-Solo será necesario hacerlo si fueron creados manualmente fuera de los scripts.
-
----
-
-# Migraciones con Flyway
-
-Las migraciones se encuentran en:
-
-```text
-backend/src/main/resources/db/migration/
-```
-
-Actualmente existen:
-
-```text
-V1__init.sql
-V2__demo_data.sql
-```
-
-Durante el despliegue Kubernetes:
-
-1. Los scripts crean el ConfigMap:
-
-```text
-playhub-migration-sql
-```
-
-2. Los archivos SQL son montados dentro del contenedor Flyway.
-
-3. Se ejecuta el Job:
-
-```text
-playhub-migrations
-```
-
-4. Flyway aplica automáticamente las migraciones pendientes.
-
-Comprobar el Job:
-
-```bash
-kubectl get jobs
-```
-
-Ver logs:
-
-```bash
-kubectl logs job/playhub-migrations
-```
-
-Describir el Job:
-
-```bash
-kubectl describe job playhub-migrations
-```
-
-Flyway está deshabilitado dentro del backend desplegado en Kubernetes mediante:
-
-```text
-SPRING_FLYWAY_ENABLED=false
-```
-
-De esta manera, la responsabilidad de ejecutar migraciones queda separada del arranque de la aplicación.
-
----
-
-# PostgreSQL
-
-PostgreSQL se despliega mediante:
-
-```text
-playhub-postgres
-```
-
-El Service utilizado por el backend es:
-
-```text
-playhub-db
-```
-
-Puerto interno:
-
-```text
-5432
-```
-
-La base utiliza un PersistentVolumeClaim:
-
-```text
-playhub-postgres-data
-```
-
-con:
-
-```text
-2Gi
-```
-
-de almacenamiento solicitado.
-
-Comprobar:
-
-```bash
-kubectl get deployment playhub-postgres
-kubectl get service playhub-db
-kubectl get pvc
-```
-
----
-
-# Comprobar el despliegue
-
-Después de ejecutar `deploy`:
+La migración `V2__demo_data.sql` incluye usuarios de demostración con contraseña `PlayHub123`: `facundo@playhub.test` y `santiago@playhub.test` son administradores; `agostina@playhub.test` y `agustin@playhub.test` son usuarios generales. Son datos de prueba, no credenciales destinadas a producción.
 
-```bash
-kubectl get pods
-```
-
-```bash
-kubectl get deployments
-```
-
-```bash
-kubectl get services
-```
-
-```bash
-kubectl get jobs
-```
-
-```bash
-kubectl get pvc
-```
-
-También se puede utilizar:
-
-```bash
-kubectl get all
-```
-
----
-
-# Diagnóstico
-
-## Ver Pods
-
-```bash
-kubectl get pods -o wide
-```
-
-## Describir un Pod
-
-```bash
-kubectl describe pod <nombre-pod>
-```
-
-## Logs del backend Blue
-
-```bash
-kubectl logs deployment/playhub-backend-blue
-```
-
-## Logs del backend Green
-
-```bash
-kubectl logs deployment/playhub-backend-green
-```
-
-## Logs del frontend Blue
-
-```bash
-kubectl logs deployment/playhub-frontend-blue
-```
-
-## Logs del frontend Green
-
-```bash
-kubectl logs deployment/playhub-frontend-green
-```
-
-## Logs de PostgreSQL
-
-```bash
-kubectl logs deployment/playhub-postgres
-```
-
-## Eventos Kubernetes
-
-```bash
-kubectl get events --sort-by=.lastTimestamp
-```
-
----
-
-# Limpieza del entorno
-
-El proyecto incluye scripts para eliminar exclusivamente los recursos Kubernetes pertenecientes a PlayHub.
-
-Por defecto, el PVC de PostgreSQL se conserva para no perder los datos.
-
----
-
-## Windows PowerShell
-
-### Limpiar recursos manteniendo PostgreSQL
-
-```powershell
-.\scripts\cleanup.ps1
-```
-
-### Eliminar también los datos de PostgreSQL, Prometheus y Grafana
-
-```powershell
-.\scripts\cleanup.ps1 -DeleteData
-```
-
-### Eliminar datos e imágenes Docker/Minikube
-
-```powershell
-.\scripts\cleanup.ps1 -DeleteData -RemoveImages
-```
-
----
-
-## Linux/macOS
-
-### Limpiar recursos manteniendo PostgreSQL
-
-```bash
-./scripts/cleanup.sh
-```
-
-### Eliminar también los datos de PostgreSQL, Prometheus y Grafana
-
-```bash
-./scripts/cleanup.sh --delete-data
-```
-
-### Eliminar datos e imágenes
-
-```bash
-./scripts/cleanup.sh --delete-data --remove-images
-```
-
-### Simular la limpieza sin eliminar nada
-
-```bash
-./scripts/cleanup.sh --dry-run
-```
-
-> **Advertencia:** `-DeleteData` / `--delete-data` elimina los PVC de PostgreSQL, Prometheus y Grafana junto con sus datos. Sin esa opción, la limpieza conserva los tres volúmenes.
-
----
-
-# Flujo recomendado para una demo
-
-## 1. Iniciar Minikube
+## 3. Integración y entrega continua - Jenkins
 
-```bash
-minikube start --driver=docker
-```
-
----
-
-## 2. Comprobar Minikube
-
-```bash
-minikube status
-kubectl config current-context
-```
-
----
-
-## 3. Desplegar Blue y Green
-
-### Windows
-
-```powershell
-.\scripts\deploy.ps1 -ClusterType minikube -DeployGreen
-```
-
-### Linux/macOS
-
-```bash
-./scripts/deploy.sh --cluster-type minikube --deploy-green
-```
-
-Los port-forward del backend, frontend, Prometheus y Grafana se crearán automáticamente.
-
----
-
-## 4. Comprobar recursos
-
-```bash
-kubectl get pods
-kubectl get services
-kubectl get jobs
-kubectl get pvc
-```
-
-Todos los Pods necesarios deberían encontrarse en estado:
-
-```text
-Running
-```
-
-y el Job:
-
-```text
-playhub-migrations
-```
-
-debería aparecer como:
-
-```text
-Complete
-```
-
----
-
-## 5. Abrir PlayHub
-
-```text
-http://localhost:5745
-```
-
----
-
-## 6. Abrir Swagger
-
-```text
-http://localhost:8080/swagger-ui.html
-```
+**TBD**
 
----
+## 4. Monitoreo y observabilidad
 
-## 7. Iniciar sesión
-
-Administrador:
-
-```text
-facundo@playhub.test
-PlayHub123
-```
-
-Usuario general:
-
-```text
-agostina@playhub.test
-PlayHub123
-```
-
----
-
-## 8. Verificar el slot activo
-
-```bash
-kubectl get service playhub-backend playhub-frontend \
-  -o custom-columns='SERVICE:.metadata.name,SLOT:.spec.selector.slot'
-```
-
-Inicialmente debería mostrarse:
-
-```text
-blue
-```
-
----
-
-## 9. Cambiar a Green
-
-### Windows
-
-```powershell
-.\scripts\switch-slot.ps1 green
-```
-
-### Linux/macOS
-
-```bash
-./scripts/switch-slot.sh green
-```
-
-Comprobar nuevamente:
-
-```bash
-kubectl get service playhub-backend playhub-frontend \
-  -o custom-columns='SERVICE:.metadata.name,SLOT:.spec.selector.slot'
-```
-
-Ahora debería aparecer:
-
-```text
-green
-```
-
----
-
-## 10. Mostrar rollback
-
-Volver a Blue.
-
-### Windows
-
-```powershell
-.\scripts\switch-slot.ps1 blue
-```
-
-### Linux/macOS
-
-```bash
-./scripts/switch-slot.sh blue
-```
+El backend expone `/actuator/prometheus` mediante Micrometer. La configuración permite `GET` a ese endpoint sin JWT y expone solamente `health` y `prometheus` de Actuator. Prometheus descubre los pods del backend y recolecta cada 15 segundos; las métricas incluyen etiquetas de pod y slot.
 
-El tráfico vuelve inmediatamente al slot anterior sin cambiar las URLs utilizadas por el cliente.
+### Aclaración sobre los dashboards
 
----
+Las métricas solicitadas **se distribuyen en varios dashboards personalizados**, en lugar de centralizarse en un único `grafana/dashboard.json`. Los JSON exportados están en `monitoring/grafana/dashboards/` y se cargan automáticamente en la carpeta **PlayHub** de Grafana.
 
-## 11. Generar datos para los dashboards de Grafana
+| Archivo exportado | Métricas y propósito |
+| --- | --- |
+| `playhub-http-latency.json` | Peticiones por segundo (RPS), latencia promedio, percentiles y throughput por endpoint. |
+| `playhub-workloads.json` | CPU y memoria por pod/contenedor, relación con límites y otras métricas de workloads. |
+| `playhub-counters.json` | Métricas de negocio: compras e ingresos; también logins fallidos y errores HTTP 500. |
+| `playhub-bluegreen.json` | Tráfico, disponibilidad y latencia por slot. Con Helm existe el slot `helm`, no dos slots Blue/Green. |
+| `playhub-nodes.json` | CPU, memoria, disco y red del nodo. |
 
-Abrir Grafana en `http://localhost:3000` (carpeta **PlayHub**) y ejecutar el
-script de demo de monitoreo, que genera tráfico real contra la API (compras,
-logins fallidos, catálogo, wishlist, errores y una ráfaga de carga) y verifica
-que las métricas aumentaron:
+El datasource tiene UID `playhub-prometheus`. El chart empaqueta copias de los JSON bajo `helm-chart/files/grafana/dashboards/`. Los manifiestos sin Helm contienen los mismos dashboards en un ConfigMap. La [guía de monitoreo](docs/monitoring.md) explica cómo mantener esas copias y verificar las consultas.
 
-Requisitos: `curl.exe` y Windows PowerShell 5.1 o PowerShell 7 en Windows;
-en Bash, `curl`, Python 3, Bash 4+ y `shuf`. La lectura de JSON está integrada
-en los scripts y no requiere archivos auxiliares.
+### Generar datos para observar los paneles
 
-### Windows
+Con la aplicación y los port-forward activos, ejecutar una variante:
 
 ```powershell
 .\scripts\demo-monitoring.ps1
 ```
 
-### Linux/macOS
-
 ```bash
-./scripts/demo-monitoring.sh
+bash scripts/demo-monitoring.sh
 ```
 
-Al terminar, el script imprime la tabla de métricas antes/después y los
-enlaces a los dashboards de contadores, latencia, Blue/Green y recursos.
-Espera hasta 180 segundos a que Prometheus recolecte los datos nuevos
-(configurable con `-TimeoutSec` / `--timeout`). Sale con código 0 si registra
-al menos 15 logins fallidos, una compra y 200 requests adicionales, el target
-está UP y la creación y limpieza de usuarios sintéticos se completan.
-Los usuarios se desactivan al finalizar; `-KeepUsers` / `--keep-users` los conserva.
-Ver [opciones de los scripts](scripts/README.md#demo-monitoringsh--demo-monitoringps1).
+El script crea usuarios sintéticos, genera consultas, compras, errores y carga concurrente, desactiva esos usuarios al terminar salvo que se solicite conservarlos y consulta Prometheus para verificar incrementos. La desactivación no borra el historial de compras generado.
 
----
+Luego abrir Grafana, seleccionar la carpeta **PlayHub**, el namespace `playhub-helm` cuando exista ese selector y un intervalo reciente. Los contadores de negocio se reinician al reiniciarse el backend; no representan el total histórico de PostgreSQL. Sin tráfico, la latencia promedio puede aparecer sin datos o como un valor no definido.
 
-# Estructura Kubernetes
+En la comprobación realizada el **16 de noviembre de 2026** sobre el despliegue existente en `default`, se observaron 12 targets `UP`, métricas de CPU y memoria de cinco pods de aplicación y datos de RPS y latencia tras solicitudes de lectura. Es una comprobación de monitoreo, no una prueba de rendimiento ni una nueva instalación del chart.
 
-Los manifiestos se encuentran en:
+## 5. Seguridad integrada y resultados disponibles
 
-```text
-k8s/
-```
+Los reportes corresponden a ejecuciones y alcances diferentes. El nombre `post-mitigacion` no demuestra por sí solo que todas las herramientas estén sin hallazgos. Los escáneres no se volvieron a ejecutar al redactar esta documentación.
 
-Incluyen:
+| Herramienta | Archivo bajo `reports/` | Resultado y alcance |
+| --- | --- | --- |
+| Semgrep, referencia | `semgrep-report.txt` | Dos hallazgos: exposición de Actuator y escalada de privilegios de cAdvisor. |
+| Semgrep, fuentes posteriores | `semgrep_scan-post-mitigacion.txt` | 164 reglas, 140 archivos y 8 hallazgos por hashes bcrypt de datos de demostración. |
+| Semgrep, Kubernetes posterior | `semgrep-kubernetes-post-mitigacion.txt` | 11 reglas, 24 archivos y 16 hallazgos; incluye privilegios de monitoreo y filesystem escribible. |
+| Snyk | `snyk-report.txt` | 6 issues: 2 críticas, 1 alta, 2 medias y 1 baja. Conserva dependencias anteriores a algunos cambios del POM. |
+| Trivy | `trivyreports_backend-post-mitigacion.txt` y `trivyreports_frontend-post-mitigacion.txt` | Los reportes posteriores muestran cero vulnerabilidades en los objetivos analizados. No sustituyen una nueva ejecución de Snyk. |
+| Kyverno | `kyvernovalidation.log` y `kyverno-validation-post-mitigacion.txt` | Evidencia de admisión y rechazo; la validación posterior registra 45 comprobaciones correctas. |
+| Falco | `falcoevent.log` y `falco/falco-symlink-report-2026-11-15_21-42-48.txt` | Alerta por un enlace simbólico hacia `/etc/shadow`, sin shell interactiva ni lectura del archivo. |
 
-```text
-configmap.yaml
-secret.yaml
+Las cuatro políticas de `k8s/kyverno/` prohíben imágenes `latest` o sin versión explícita, exigen CPU y memoria, impiden ejecución como root y exigen `allowPrivilegeEscalation: false`. Las excepciones delimitadas para DaemonSets de monitoreo y los resultados se explican en [docs/security.md](docs/security.md).
 
-postgres-pvc.yaml
-postgres-service.yaml
-postgres-deployment.yaml
+**Nombres de las evidencias:** el validador escribe `reports/kyvernovalidation.log`, sin guion. La prueba válida de Falco escribe `reports/falcoevent.log`, también sin guion. `reports/falco-event.log` conserva una prueba anterior de shell, que no se utiliza aquí como evidencia del requisito de Falco del laboratorio 4. La guía de scripts incluye cómo copiar una nueva evidencia válida a los nombres pedidos por la consigna, después de verificarla.
 
-migration-job.yaml
+## 6. Problemas encontrados y soluciones adoptadas
 
-backend-service.yaml
-backend-blue-deployment.yaml
-backend-green-deployment.yaml
+| Problema o restricción | Solución presente o estado documentado |
+| --- | --- |
+| Herramientas de build en las imágenes de ejecución | Builds por etapas; las oportunidades de reducción restantes están medidas en el informe de Dive. |
+| Métricas de CPU, memoria y red con etiquetas Kubernetes en el entorno local | Scrape de kubelet/resource y exporters; cAdvisor auxiliar para red. |
+| Conflicto entre node-exporter de manifiestos y otro release Helm | El chart calcula un puerto por release y namespace, configurable en `values.yaml`. |
+| Checksums de Flyway dependientes de los bytes de los SQL | `.gitattributes` fija LF para migraciones; el despliegue por manifiestos preserva UTF-8 al generar el ConfigMap. |
+| Instalaciones de seguridad preexistentes | Marcadores de propiedad y opciones para omitir o adoptar instalaciones compatibles. |
+| Privilegios de cAdvisor/Falco | Excepciones de admisión acotadas a DaemonSets e identidad del controlador; se conservan los hallazgos estáticos. |
+| Reportes de fechas o alcances diferentes | Se indica qué demuestra cada archivo, sin declarar corregido un reporte que no se volvió a generar. |
+| Cambio de URL de la API en el frontend | Se incorpora durante el build; cambiar solo el ConfigMap no modifica una imagen ya construida. |
 
-frontend-service.yaml
-frontend-blue-deployment.yaml
-frontend-green-deployment.yaml
-```
+## 7. Detener y limpiar
 
----
-
-# Scripts
-
-Los scripts están disponibles en:
-
-```text
-scripts/
-```
-
-## Despliegue
-
-```text
-deploy.sh
-deploy.ps1
-```
-
-## Cambio Blue/Green
-
-```text
-switch-slot.sh
-switch-slot.ps1
-```
-
-## Limpieza
-
-```text
-cleanup.sh
-cleanup.ps1
-```
-
-## Demo de monitoreo
-
-```text
-demo-monitoring.sh
-demo-monitoring.ps1
-```
-
-Genera tráfico real contra la API para alimentar los dashboards de Grafana y
-verifica en Prometheus que las métricas aumentaron. Ver
-[monitoring/README.md](monitoring/README.md).
+Para retirar el release y sus port-forward, conservando los datos:
 
 ```powershell
-.\scripts\demo-monitoring.ps1 -Deploy -DeployGreen
+.\scripts\cleanup-helm.ps1
 ```
 
 ```bash
-./scripts/demo-monitoring.sh --deploy --deploy-green
+bash scripts/cleanup-helm.sh
 ```
 
-Existe documentación adicional sobre los scripts en:
+Para revisar una limpieza completa antes de ejecutarla:
 
-```text
-scripts/README.md
+```powershell
+.\scripts\cleanup-helm.ps1 -DeleteData -DeleteNamespace -RemoveImages -RemoveSecurity -WhatIf
 ```
 
----
-
-# Escenarios BDD
-
-La carpeta:
-
-```text
-features/
+```bash
+bash scripts/cleanup-helm.sh --delete-data --delete-namespace --remove-images --remove-security --dry-run
 ```
 
-contiene especificaciones Gherkin utilizadas para describir los principales comportamientos del sistema.
+Quitar `-WhatIf` / `--dry-run` ejecuta esa limpieza y **borra los datos** de PostgreSQL, Prometheus y Grafana. La seguridad compartida solo se retira si está registrada como propiedad de PlayHub y no se detectan recursos ajenos que impidan eliminarla. Los namespaces de seguridad se conservan.
 
-Incluyen escenarios relacionados con:
+`cleanup.sh` corresponde a los manifiestos Blue/Green; para un release Helm se utiliza `cleanup-helm`. Las variantes están en [scripts/README.md](scripts/README.md).
 
-- Autenticación.
-- Catálogo.
-- Biblioteca.
-- Carrito.
-- Deseados.
-- Administración de usuarios.
-- Administración de juegos.
+## 8. Conclusiones y oportunidades de mejora
 
----
+El repositorio integra contenedores, despliegue parametrizable con Helm, métricas de aplicación e infraestructura y controles de seguridad de código, dependencias, admisión y runtime. Los dashboards presentan indicadores técnicos y de negocio mediante varias vistas complementarias.
 
-# Documentación con Doxygen
+Las evidencias muestran límites concretos: Snyk conserva críticas pendientes de una nueva verificación, Semgrep y KubeLinter registran hallazgos residuales y algunos nombres de reportes difieren de la consigna. Estas diferencias se documentan sin reemplazar ni inventar resultados.
 
-El proyecto incluye:
+Las mejoras identificadas son medir las optimizaciones propuestas por Dive, volver a ejecutar Snyk sobre las dependencias actuales, revisar los hallazgos residuales y migrar las `ClusterPolicy` cuyo uso aparece deprecado en los logs de Kyverno. La configuración `prod` requiere adaptar credenciales, acceso a imágenes e Ingress al entorno de destino; por sí sola no acredita un despliegue de producción validado.
 
-```text
-Doxyfile
-```
+## 9. Generar la documentación con Doxygen
 
-Para generar la documentación:
+Con Doxygen instalado, ejecutar desde la raíz:
 
 ```bash
 doxygen Doxyfile
 ```
 
-La documentación se genera en:
+El nombre del archivo es `Doxyfile`, respetando mayúsculas y minúsculas. La salida se abre en `docs/generated/html/index.html`. El README central se utiliza como portada e incluye navegación a las guías de scripts, Helm, monitoreo, seguridad, análisis de imágenes y arquitectura del código.
 
-```text
-docs/generated/html/
-```
-
-La página principal puede abrirse desde:
-
-```text
-docs/generated/html/index.html
-```
-
-El Doxyfile procesa documentación de:
-
-```text
-README.md
-docs/
-backend/src/main/java/
-frontend/src/
-```
-
----
-
-# Resumen de puertos en Kubernetes
-
-| Componente | Puerto |
-|---|---:|
-| Frontend | `5745` |
-| Backend | `8080` |
-| PostgreSQL | `5432` |
-| Prometheus | `9090` |
-| Grafana | `3000` |
-
-Con los port-forward automáticos:
-
-```text
-http://localhost:5745
-http://localhost:8080
-http://localhost:9090
-http://localhost:3000
-```
-
----
-
-# Resumen rápido
-
-### Iniciar Minikube
-
-```bash
-minikube start --driver=docker
-```
-
-### Deploy Blue + Green
-
-Windows:
-
-```powershell
-.\scripts\deploy.ps1 -ClusterType minikube -DeployGreen
-```
-
-Linux/macOS:
-
-```bash
-./scripts/deploy.sh --cluster-type minikube --deploy-green
-```
-
-### Activar Green
-
-Windows:
-
-```powershell
-.\scripts\switch-slot.ps1 green
-```
-
-Linux/macOS:
-
-```bash
-./scripts/switch-slot.sh green
-```
-
-### Rollback a Blue
-
-Windows:
-
-```powershell
-.\scripts\switch-slot.ps1 blue
-```
-
-Linux/macOS:
-
-```bash
-./scripts/switch-slot.sh blue
-```
-
-### Limpiar
-
-Windows:
-
-```powershell
-.\scripts\cleanup.ps1
-```
-
-Linux/macOS:
-
-```bash
-./scripts/cleanup.sh
-```
-
-### Seguridad en Kubernetes del entregable 3
-
-Para levantar PlayHub se puede utilizar el despliegue habitual. Para desplegar
-la aplicación con las cuatro políticas de seguridad activas, primero se debe
-instalar Kyverno, una vez por clúster.
-
-| Script | Función | Cuándo ejecutarlo |
-|---|---|---|
-| `scripts/install-kyverno.ps1` | Instala Kyverno y aplica las cuatro políticas. | Al preparar un clúster nuevo, antes de desplegar la app. |
-| `scripts/validate-kyverno.ps1` | Prueba la aceptación y el rechazo de manifiestos y guarda `reports/kyvernovalidation.log`. | Después de instalar o modificar las políticas, o para demostrar el entregable. |
-| `scripts/lint-kubernetes.ps1` | Analiza los manifiestos con KubeLinter y guarda `reports/kubelinter.txt`. | Después de modificar los YAML y antes de entregar o desplegar. |
-
-Para que el profesor o un integrante del equipo reproduzca esta parte, con
-Docker y Minikube funcionando, ejecutar desde la raíz del repositorio en
-PowerShell:
-
-```powershell
-.\scripts\install-kyverno.ps1
-.\scripts\deploy.ps1 -ClusterType minikube -DeployGreen
-.\scripts\deploy-falco.ps1
-.\scripts\validate-kyverno.ps1
-.\scripts\lint-kubernetes.ps1
-```
-
-Los scripts de validación y análisis generan la evidencia; no son requisitos
-para arrancar la app. KubeLinter puede ejecutarse con Docker sin un clúster
-activo.
-
-`deploy.ps1` y `deploy.sh` no ejecutan automáticamente estos scripts de
-seguridad. Una vez instalado Kyverno, las políticas se aplican automáticamente
-a los siguientes despliegues, sin repetir la instalación en cada arranque.
-ver más en [kyverno.md](kyverno.md)
-
-
-Para completar la demostración de Falco:
-
-```powershell
-.\scripts\simulate-shell-attack.ps1 -Seconds 2
-.\scripts\get-falco-report.ps1
-Get-Content reports/falco-event.log
-```
-
-Los resultados, las mitigaciones y los hallazgos aceptados se explican en
-[DevSecOps.md](DevSecOps.md). Se mantienen los bcrypt de datos demo. Los cuatro
-archivos exigidos están en `reports/npm-audit.txt`, `reports/trivyreport.txt`,
-`reports/kubelinter.txt` y `reports/falco-event.log`.
+Los HTML son archivos generados y están excluidos de Git. Se editan los Markdown y el código fuente, y luego se vuelve a ejecutar Doxygen. No hace falta iniciar Kubernetes para generar esta documentación.
