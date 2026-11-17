@@ -119,16 +119,27 @@ Es un formato, no una referencia a una ejecución concreta. El frontend recibe `
 
 La publicación y el despliegue usan el mismo `IMAGE_TAG`. El despliegue remoto:
 
-1. Utiliza el kubeconfig entregado por Jenkins y comprueba conectividad y configuración de Ingress.
+1. Utiliza el kubeconfig entregado por Jenkins y comprueba conectividad y configuración de Ingress. Las consultas de preparación tienen timeout de 20 segundos por petición; la lectura de `/version` reintenta hasta tres veces ante fallos transitorios y conserva el error real de conexión, autenticación o TLS.
 2. Omite construir/cargar imágenes y abrir port-forward; usa las imágenes del registry.
 3. Deshabilita Prometheus/Grafana del release. Este comportamiento no depende del valor base `monitoring.enabled` del chart.
 4. Omite, instala o adopta Kyverno/Falco según `SECURITY_MODE`.
 5. Genera un archivo temporal de valores con secretos, imágenes, Ingress, CORS y cookies; lo elimina al terminar.
 6. Ejecuta `helm lint`, prepara el namespace cuando corresponde y crea/actualiza `regcred` con las credenciales del registry.
-7. Ejecuta `helm upgrade --install --atomic --wait`, con timeout remoto de 10 minutos por defecto.
-8. Ejecuta `helm test` y, si se solicitó, comprueba `PUBLIC_URL/login` con reintentos.
+7. Vuelve a comprobar conectividad antes de ejecutar `helm upgrade --install --atomic --wait`, con timeout remoto de 10 minutos por defecto. No reintenta automáticamente una instalación/actualización que pudo haber creado recursos.
+8. Ejecuta `helm test` con el mismo timeout y, si se solicitó, comprueba `PUBLIC_URL/login` con reintentos.
 
 `--atomic` corresponde a la operación de instalación/actualización de Helm. `helm test` y la verificación pública ocurren después; no se debe afirmar que su fallo provoca automáticamente un rollback de esa operación ya finalizada.
+
+Si falla la operación Helm o su test, el script guarda `reports/deploy-diagnostics.txt`. Primero consulta la API con timeout; si sigue inaccesible, omite las consultas adicionales. Si responde, recopila el estado de Deployments, ReplicaSets, pods, Services, PVCs, Ingress y eventos, sin volcar valores de Secrets. Con `--atomic`, algunos recursos pueden haber sido eliminados o revertidos antes de recopilar ese estado.
+
+Un error `dial tcp ...:443: i/o timeout`, `unexpected EOF` o `connection refused` indica un problema de comunicación con la API Kubernetes. No demuestra un fallo del chart ni permite distinguir por sí solo entre caída del servidor, proxy, firewall o red del agente. Aumentar el timeout de Helm no restablece esa conexión. Comprobar desde el mismo agente/contenedor Jenkins, usando su credencial:
+
+```bash
+kubectl --kubeconfig "$KUBECONFIG_FILE" --request-timeout=20s get --raw /version
+kubectl --kubeconfig "$KUBECONFIG_FILE" --request-timeout=20s get pods -n alumno-team9
+```
+
+Que estos comandos funcionen en otra máquina no confirma la conectividad del agente. Un `Forbidden` al consultar `IngressClass` es distinto: la cuenta del laboratorio puede gestionar recursos del namespace sin permisos para listar recursos globales. El script conserva ese aviso y continúa; los errores de red se reportan como tales. Tampoco intenta crear un namespace cuando la consulta falla por problemas de conexión.
 
 Si `SECURITY_MODE` es distinto de `skip` y el despliegue alcanza ese punto, Jenkins recopila el estado de políticas y Falco en `reports/security-stack.txt`. Las consultas usan `|| true`: ese archivo es un resumen de estado, no una validación de admisión ni la evidencia de un evento Falco.
 
@@ -139,6 +150,7 @@ Si `SECURITY_MODE` es distinto de `skip` y el despliegue alcanza ese punto, Jenk
 | Consola de cada etapa | Build correspondiente en Jenkins, con timestamps. |
 | Semgrep de la corrida | Artefacto `reports/semgrep.json`. |
 | Tests Java | Resultados JUnit de `backend/target/surefire-reports/*.xml`. |
+| Diagnóstico de un fallo de Helm o `helm test` | `reports/deploy-diagnostics.txt`, si se alcanza esa operación y falla. |
 | Estado opcional de seguridad | `reports/security-stack.txt`, bajo las condiciones anteriores. |
 | Imágenes publicadas | Registry, con el tag mostrado en `Checkout` y publicación. |
 | Release desplegado | Namespace elegido, mediante Helm y kubectl. |

@@ -246,9 +246,32 @@ yaml_single_quote() {
   printf "'%s'" "${1//$quote/$quote$quote}"
 }
 
+kubectl_request() {
+  kubectl --request-timeout=20s "$@"
+}
+
+check_cluster_connection() {
+  local attempt response
+  for attempt in 1 2 3; do
+    if response="$(kubectl_request get --raw /version 2>&1)"; then
+      kubernetes_version_response="$response"
+      return 0
+    fi
+    echo "No se pudo consultar la API Kubernetes (intento $attempt/3): $response" >&2
+    case "$response" in
+      *Unauthorized*|*unauthorized*|*Forbidden*|*forbidden*|*x509:*) break ;;
+    esac
+    if (( attempt < 3 )); then sleep 2; fi
+  done
+  echo "API Kubernetes inaccesible: $current_server (contexto $current_context)." >&2
+  echo 'Revisar conectividad desde el agente Jenkins (DNS, puerto 443, proxy/VPN/firewall), disponibilidad del cluster y kubeconfig.' >&2
+  echo 'Se cancela antes de ejecutar Helm; aumentar --wait-timeout no resuelve una API inaccesible.' >&2
+  return 1
+}
+
 print_kubernetes_version() {
   local server_version minor
-  server_version="$(kubectl version -o jsonpath='{.serverVersion.gitVersion}' 2>/dev/null || true)"
+  server_version="$(printf '%s\n' "$kubernetes_version_response" | sed -n 's/.*"gitVersion": *"\([^"]*\)".*/\1/p')"
   if [[ -z "$server_version" ]]; then
     return
   fi
@@ -283,18 +306,35 @@ check_remote_security_permissions() {
 }
 
 ensure_namespace() {
-  local error_output
+  local result
   namespace_created=false
-  if kubectl get namespace "$namespace" >/dev/null 2>&1; then
-    return 0
+  if result="$(kubectl_request get namespace "$namespace" --ignore-not-found=true -o name 2>&1)"; then
+    if [[ -n "$result" ]]; then return 0; fi
+  else
+    if [[ "$result" == *Forbidden* || "$result" == *forbidden* ]]; then
+      echo "Aviso: no se puede consultar el namespace '$namespace'; se asume que ya existe." >&2
+      return 0
+    fi
+    echo "No se pudo consultar el namespace '$namespace': $result" >&2
+    return 1
   fi
-  error_output="$(kubectl get namespace "$namespace" 2>&1 >/dev/null || true)"
-  if [[ "$error_output" == *Forbidden* || "$error_output" == *forbidden* ]]; then
-    echo "Aviso: no se puede consultar el namespace '$namespace'; se asume que ya existe." >&2
-    return 0
-  fi
-  kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl_request create namespace "$namespace" --dry-run=client -o yaml | kubectl_request apply -f - >/dev/null
   namespace_created=true
+}
+
+report_deploy_failure() {
+  mkdir -p "$project_root/reports"
+  {
+    echo "El despliegue no se completo. API: $current_server; namespace: $namespace; release: $release_name."
+    if kubectl_request get --raw /version >/dev/null; then
+      echo 'Estado actual de los recursos y eventos (Helm puede haber revertido los recursos con --atomic):'
+      kubectl_request get deployments,replicasets,pods,svc,pvc,ingress -n "$namespace" -o wide || true
+      kubectl_request get events -n "$namespace" --sort-by=.lastTimestamp || true
+    else
+      echo 'La API Kubernetes sigue inaccesible. Se omiten las demas consultas para no prolongar el fallo.'
+      echo 'Revisar la conexion desde el agente Jenkins y el estado del cluster antes de reintentar.'
+    fi
+  } 2>&1 | tee "$project_root/reports/deploy-diagnostics.txt"
 }
 
 prepare_falco_namespace() {
@@ -618,29 +658,24 @@ echo "Entorno: $environment"
 echo "Modo: $([[ "$remote" == true ]] && echo remoto || echo local)"
 
 if [[ "$remote" == true ]]; then
-  if ! kubectl --request-timeout=20s get --raw /version >/dev/null 2>&1; then
-    echo "No se pudo contactar el cluster '$current_context'. Revisar el kubeconfig y la conectividad." >&2
-    exit 1
-  fi
-
+  check_cluster_connection
   print_kubernetes_version
 
   if [[ -n "$public_host" && -n "$ingress_class" ]]; then
-    ingressclass_error="$(kubectl get ingressclass "$ingress_class" 2>&1 >/dev/null || true)"
+    ingressclass_error="$(kubectl_request get ingressclass "$ingress_class" 2>&1 >/dev/null || true)"
     if [[ -n "$ingressclass_error" ]]; then
       if [[ "$ingressclass_error" == *Forbidden* || "$ingressclass_error" == *forbidden* ]]; then
         echo "Aviso: no se puede consultar la IngressClass '$ingress_class'; se asume que existe." >&2
       else
-        echo "No existe la IngressClass '$ingress_class'. Disponibles:" >&2
-        kubectl get ingressclass >&2 2>/dev/null || true
+        echo "No se pudo validar la IngressClass '$ingress_class': $ingressclass_error" >&2
         exit 1
       fi
     fi
   fi
 
   if [[ "$tls_enabled" == true ]]; then
-    if ! kubectl get "clusterissuer/$tls_issuer" >/dev/null 2>&1; then
-      echo "No existe el ClusterIssuer '$tls_issuer'. Instalar cert-manager y crearlo, o usar --tls-issuer." >&2
+    if ! issuer_result="$(kubectl_request get "clusterissuer/$tls_issuer" 2>&1)"; then
+      echo "No se pudo validar el ClusterIssuer '$tls_issuer': $issuer_result" >&2
       exit 1
     fi
   fi
@@ -824,11 +859,12 @@ helm lint "$chart_path" "${lint_args[@]}"
 if [[ "$remote" == true ]]; then
   echo "Preparando namespace e imagePullSecret..."
   ensure_namespace
-  kubectl -n "$namespace" create secret docker-registry "$registry_secret_name" \
+  kubectl_request -n "$namespace" create secret docker-registry "$registry_secret_name" \
     --docker-server="$docker_server" \
     --docker-username="$REG_USER" \
     --docker-password="$REG_PASS" \
-    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    --dry-run=client -o yaml | kubectl_request apply -f - >/dev/null
+  check_cluster_connection
 fi
 
 echo "Instalando / actualizando el release con Helm (entorno $environment)..."
@@ -849,26 +885,27 @@ if [[ -f "$override_file" ]]; then
 fi
 
 if ! helm "${helm_args[@]}"; then
-  echo "El despliegue no se completo. Estado actual del namespace:" >&2
-  kubectl get pods -n "$namespace" -o wide || true
-  kubectl get events -n "$namespace" --sort-by=.lastTimestamp || true
+  report_deploy_failure
   exit 1
 fi
 
 echo
 echo "Pods, servicios y volumenes del release:"
-kubectl get pods,svc,pvc -n "$namespace" || true
+kubectl_request get pods,svc,pvc -n "$namespace" || true
 
 echo
 echo "Ejecutando helm test..."
-helm test "$release_name" -n "$namespace"
+if ! helm test "$release_name" -n "$namespace" --timeout "$wait_timeout"; then
+  report_deploy_failure
+  exit 1
+fi
 
 base_name="$(resource_base_name)"
 echo
 
 if [[ "$remote" == true ]]; then
   echo "URL publica: $public_url"
-  kubectl -n "$namespace" get ingress,secret || true
+  kubectl_request -n "$namespace" get ingress || true
 fi
 
 if [[ "$environment" == "prod" && "$remote" == false ]]; then
@@ -891,7 +928,7 @@ if [[ "$verify_public" == true ]]; then
   done
   if [[ "$verified" != true ]]; then
     echo "No se pudo verificar $public_url/login. Revisar DNS, Ingress y certificado TLS." >&2
-    kubectl -n "$namespace" get ingress,certificate >&2 2>/dev/null || true
+    kubectl_request -n "$namespace" get ingress,certificate >&2 2>/dev/null || true
     exit 1
   fi
   echo "URL publica verificada: $public_url"
