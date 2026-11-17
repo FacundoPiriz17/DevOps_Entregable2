@@ -42,10 +42,40 @@ pipeline {
 
         stage("Checkout"){
             steps {
-                    script {
+                script {
                     def checkoutInfo = checkout scm
                     env.GIT_SHORT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
-                    env.SOURCE_BRANCH = env.BRANCH_NAME ?: checkoutInfo.GIT_BRANCH ?: env.GIT_BRANCH ?: ''
+                    env.SOURCE_BRANCH = (env.BRANCH_NAME ?: checkoutInfo.GIT_BRANCH ?: env.GIT_BRANCH ?: '').trim()
+                    if (!env.SOURCE_BRANCH) {
+                        env.SOURCE_BRANCH = sh(script: '''
+                            set -eu
+                            branch="$(git symbolic-ref --quiet --short HEAD || true)"
+                            if [ -n "$branch" ]; then
+                                printf '%s' "$branch"
+                            else
+                                main_commit="$(git rev-parse --verify refs/remotes/origin/main 2>/dev/null || true)"
+                                if [ -n "$main_commit" ] && [ "$(git rev-parse HEAD)" = "$main_commit" ]; then
+                                    printf '%s' main
+                                fi
+                            fi
+                        ''', returnStdout: true).trim()
+                    }
+                    // Un parametro ausente usa el default; un false explicito se respeta.
+                    def deployRequested = params.DEPLOY == null || params.DEPLOY == true
+                    def mainBranch = env.SOURCE_BRANCH in ['main', 'origin/main', 'refs/heads/main', 'refs/remotes/origin/main']
+                    env.SHOULD_DEPLOY = 'false'
+                    if (!deployRequested) {
+                        env.DEPLOY_REASON = 'DEPLOY=false: esta corrida ejecuta CI y publica imagenes, sin actualizar Kubernetes.'
+                    } else if (env.CHANGE_ID || env.TAG_NAME) {
+                        env.DEPLOY_REASON = 'Build de pull request o tag: no se despliega.'
+                    } else if (!env.SOURCE_BRANCH) {
+                        error('DEPLOY esta habilitado, pero no se pudo identificar la rama. Revisar el checkout SCM; no se asume main.')
+                    } else if (!mainBranch) {
+                        env.DEPLOY_REASON = "Rama ${env.SOURCE_BRANCH}: solo main se despliega."
+                    } else {
+                        env.SHOULD_DEPLOY = 'true'
+                        env.DEPLOY_REASON = 'Habilitado: DEPLOY=true y checkout de main.'
+                    }
                     env.IMAGE_TAG = "${env.BUILD_NUMBER}-${env.GIT_SHORT}"
                     env.PUBLIC_HOST = (params.PUBLIC_HOST ?: 'playhub-team9.reto-ucu.net').trim()
                     env.PUBLIC_SCHEME = params.PUBLIC_SCHEME ?: 'https'
@@ -71,9 +101,10 @@ pipeline {
                     if (env.MANAGE_TLS == 'true' && env.PUBLIC_SCHEME != 'https') {
                         error('MANAGE_TLS=true requiere PUBLIC_SCHEME=https.')
                     }
-                    }
+                }
                 sh 'mkdir -p reports/ci'
                 echo "Rama ${env.SOURCE_BRANCH} | Commit ${env.GIT_SHORT} | Tag de imagen ${env.IMAGE_TAG}"
+                echo "Deploy Helm: ${env.DEPLOY_REASON}"
             }
         }
 
@@ -137,7 +168,7 @@ pipeline {
         stage("Deploy Helm"){
             when {
                 expression {
-                    params.DEPLOY && env.SOURCE_BRANCH in ['main', 'origin/main', 'refs/heads/main', 'refs/remotes/origin/main']
+                    env.SHOULD_DEPLOY == 'true'
                 }
             }
             steps {
