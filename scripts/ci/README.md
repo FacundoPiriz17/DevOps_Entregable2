@@ -230,8 +230,6 @@ semgrep scan \
 
 El punto final selecciona la raíz del checkout, equivalente al destino implícito de la etapa. Las dos reglas remotas requieren acceso al registry de Semgrep. La invocación actual no incluye `--error`: no se documenta como bloqueo por hallazgos.
 
-**TBD:** incorporar Snyk y los comandos/credenciales de su futura etapa cuando exista la implementación. El archivo histórico `reports/snyk-report.txt` no es la salida de un comando de esta pipeline.
-
 ## Diagnóstico
 
 | Situación | Comprobación relacionada con la implementación |
